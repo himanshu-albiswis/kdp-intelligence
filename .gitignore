@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# generated research outputs (keep sample_output/ tracked)
+/kdp_*.json
+/kdp_dashboard_*.html
+proxies.txt
