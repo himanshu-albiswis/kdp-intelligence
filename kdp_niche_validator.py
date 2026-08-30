@@ -39,6 +39,7 @@ Notes:
 
 import argparse
 import logging
+import os
 import re
 import sys
 
@@ -50,6 +51,8 @@ try:
     from pydantic import BaseModel, Field, ValidationError, field_validator
 except ImportError:
     sys.exit("This script needs pydantic. Run: pip install pydantic")
+
+import kdp_adaptive  # noqa: E402
 
 from scrapling.fetchers import AsyncStealthySession, FetcherSession, ProxyRotator
 from scrapling.spiders import Request, Response, Spider
@@ -179,12 +182,21 @@ def _to_int(text: Optional[str]) -> int:
 # --------------------------------------------------------------------------
 # The spider
 # --------------------------------------------------------------------------
+CARD_SELECTOR = 'div[data-component-type="s-search-result"]'
+
+
 class KDPNicheSpider(Spider):
     name = "kdp-niche"
     concurrent_requests = 2  # be gentle with Amazon
     download_delay = 2.0
     max_blocked_retries = 3
     logging_level = logging.INFO
+    # Let Scrapling pick the delay per domain and back off when Amazon starts
+    # blocking, instead of trusting one hand-tuned constant everywhere.
+    autothrottle_enabled = True
+    # Replay cached responses while iterating on parse logic. Off unless asked:
+    # a stale cache silently scoring old data would be worse than a slow run.
+    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
 
     def __init__(
         self,
@@ -222,6 +234,13 @@ class KDPNicheSpider(Spider):
 
         self.total_results: Optional[int] = None  # what Amazon claims for this keyword
         self.valid_books: list[Book] = []
+        # Set when a card had to be recovered by similarity — surfaced as a
+        # warning so a redesign is never mistaken for a block.
+        self.selector_drift: Optional[str] = None
+        # Raw price strings, kept so the pipeline can verify Amazon served
+        # the currency this marketplace actually uses. amazon.com returns
+        # INR to an Indian IP, which used to be scored as dollars.
+        self.price_texts: list[str] = []
         self.books_by_asin: dict[str, Book] = {}
         self.invalid_records: list[tuple[dict, str]] = []
         self.invalid_reviews = 0
@@ -231,6 +250,11 @@ class KDPNicheSpider(Spider):
         super().__init__(**kwargs)
 
     def configure_sessions(self, manager):
+        # Responses built by a Spider take their parsing arguments from
+        # `selector_config`; without this, `auto_save` is silently inert and
+        # no element fingerprints are ever written.
+        selector_config = kdp_adaptive.selector_kwargs()
+
         # Cheap TLS-impersonated HTTP does the bulk of the work...
         manager.add(
             "http",
@@ -239,6 +263,7 @@ class KDPNicheSpider(Spider):
                 stealthy_headers=self.stealthy_headers,
                 proxy=self.proxy,
                 proxy_rotator=self.proxy_rotator,
+                selector_config=selector_config,
             ),
             default=True,
         )
@@ -248,7 +273,9 @@ class KDPNicheSpider(Spider):
         # from fresh IPs.
         manager.add(
             "stealth",
-            AsyncStealthySession(headless=True, proxy=self.proxy, proxy_rotator=self.proxy_rotator),
+            AsyncStealthySession(headless=True, proxy=self.proxy,
+                                 proxy_rotator=self.proxy_rotator,
+                                 selector_config=selector_config),
             lazy=True,
         )
 
@@ -282,8 +309,17 @@ class KDPNicheSpider(Spider):
             if self.total_results:
                 self.logger.info(f'Amazon {self.marketplace.upper()} reports ~{self.total_results:,} results for "{self.keyword}"')
 
-        # 2) Extract + validate every book card on this page
-        for card in response.css('div[data-component-type="s-search-result"]'):
+        # 2) Extract + validate every book card on this page.
+        # Routed through kdp_adaptive so an Amazon redesign relocates the card
+        # by similarity instead of looking identical to a soft block.
+        cards, how = kdp_adaptive.select(
+            response, CARD_SELECTOR, identifier="amazon_search_card")
+        note = kdp_adaptive.explain(how, CARD_SELECTOR)
+        if note and not self.selector_drift:
+            self.selector_drift = note
+            self.logger.warning(note)
+
+        for card in cards:
             if len(self.valid_books) >= self.max_books:
                 break
 
@@ -300,7 +336,9 @@ class KDPNicheSpider(Spider):
             # price simply isn't on the card - record None, not $0.00.
             price_section = " ".join(card.css('[data-cy="price-recipe"] ::text').getall())
             is_ku = "Kindle Unlimited" in price_section
-            prices = [p for p in (_to_float(t) for t in card.css(".a-price .a-offscreen::text").getall()) if p is not None]
+            price_texts = card.css(".a-price .a-offscreen::text").getall()
+            self.price_texts.extend(t for t in price_texts if t)
+            prices = [p for p in (_to_float(t) for t in price_texts) if p is not None]
             buy_price = max(prices) if prices else None
             if is_ku and buy_price == 0:
                 buy_price = None
