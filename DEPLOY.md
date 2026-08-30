@@ -52,27 +52,67 @@ Any platform that runs a Dockerfile works as-is. Two production notes:
 ## AI narrative (optional)
 
 The Niche Brief always ships its deterministic layer (gates, break-even,
-evidence). Set ONE of these to add the grounded analyst narrative:
+evidence). Add a key to enable the grounded analyst narrative on top.
+
+Put secrets in a `.env` file in the repo root — it is git-ignored and loaded
+automatically at startup:
 
 ```bash
+# .env
 GEMINI_API_KEY=...        # + optional GEMINI_MODEL (default gemini-2.5-flash)
+# or
 ANTHROPIC_API_KEY=...     # + optional ANTHROPIC_MODEL (default claude-sonnet-5)
 ```
 
-The model receives only the computed data digest and must cite ASINs; if
-the call fails, the brief still renders and says the narrative is off.
+Gemini wins if both are set. Keys are read **per call**, not at import, so
+you can add or rotate one without restarting the server — and a key added
+after startup is picked up rather than silently ignored.
 
-## Social sources — what to promise
+The model receives only the computed data digest and must cite ASINs; if the
+call fails, the brief still renders and `narrative_source` says what went
+wrong instead of failing the request.
 
-- Google + YouTube autocomplete: work from any IP, included in every scan.
-- Reddit: blocked from datacenter IPs (403) — works via residential proxies.
-- X/Twitter: deliberately excluded — logged-out X serves only a JavaScript
-  wall; access needs a logged-in account (ToS/ban risk) or the paid API.
+## Two traps that silently corrupt results
 
-Jobs run one at a time (deliberate — polite scraping). The result bundle is
-the same JSON the CLI dashboard produces: summary KPIs, scored keywords,
-books, BSR money metrics, release velocity, title gaps, n-grams, complaints,
-and any warnings (blocked pages are flagged, never silently scored).
+Both were found by running real scans on 2026-08-31 and are now guarded.
+
+**1. The `chrome` fingerprint plus stealth headers is refused by Amazon.**
+Measured three times each on `amazon.com/s?k=adhd+for+beginners`:
+
+| fingerprint | stealth headers | result |
+|---|---|---|
+| chrome | on | **HTTP 503, 2 KB decoy, 0 results** |
+| chrome | off | HTTP 200, ~850 KB, 16 results |
+| edge | on | HTTP 200, ~920 KB, 16 results |
+| edge | off | HTTP 200, ~863 KB, 22 results |
+
+Stealth headers are not the problem on their own — `edge` tolerates them.
+The default is now `edge`, and choosing `chrome` auto-disables stealth
+headers with a note rather than failing. A "Plain headers" checkbox is on
+both forms as an escape hatch.
+
+**2. Amazon localises prices to your IP.** From an Indian IP, `amazon.com`
+returns prices in **INR** (`a-price-symbol">INR`, wholes like `1,337`)
+while the tool labelled them `$`. That produced `avg_buy_price: $1593.95`
+and royalties computed on rupee figures — every money number wrong, with no
+warning. The pipeline now reads the rendered currency, compares it to the
+marketplace's, and **suppresses prices and all derived income** on a
+mismatch rather than reporting a confident wrong answer. Use a proxy in the
+target country, or research the marketplace matching your location.
+
+## Scraping resilience
+
+- **Adaptive selectors.** Element fingerprints accumulate in `data/adaptive.db`
+  while scans succeed. If Amazon renames `data-component-type`, the card is
+  recovered by similarity and the run warns you instead of reporting a
+  phantom soft block. Delete the file to relearn from scratch.
+- **Adaptive throttling.** Spiders set `autothrottle_enabled`, so the delay is
+  chosen per domain and backs off when Amazon starts blocking, rather than
+  trusting one hand-tuned constant.
+- **Response replay for development.** Set `KDP_DEV_CACHE=1` to cache and
+  replay responses while iterating on parse logic, instead of re-hitting
+  Amazon and burning into a soft block. Never set it in production — a stale
+  cache scoring old data is worse than a slow scan.
 
 ## Operational notes
 

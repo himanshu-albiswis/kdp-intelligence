@@ -70,13 +70,47 @@ Every metric appears in the JSON output, so every score is auditable.
 
 ## Honest limitations
 
-- BSR→sales is an order-of-magnitude estimate, not accounting.
-- Anonymous scraping gets ~10 reviews per star filter per book — full
-  review histories require a logged-in session (ban risk) or a paid API.
+- BSR→sales is an order-of-magnitude estimate, not accounting. The tool now
+  reports it as a **range with a confidence label** (`kdp_estimates.Estimate`)
+  rather than a point value, because a single number implied precision the
+  public curve cannot support.
+- The curve is calibrated on the US store; other marketplaces are scaled by
+  rough relative market size. Crude, but far better than treating a UK BSR of
+  10,000 as equal to a US one.
+- KU income is now included (`kdp_estimates.ku_monthly_income`) but assumes a
+  300-page KENP length and a 70% read-through. Override per niche if you know
+  better.
+- Anonymous scraping gets ~10 reviews per star filter per book — full review
+  histories require a logged-in session (ban risk) or a paid API.
 - Amazon marketplaces protect themselves differently: UK/JP/AU aggressively
-  block datacenter IPs. Use region-local residential proxies via
-  `--proxies` there.
+  block datacenter IPs. Use region-local residential proxies via `--proxies`.
+- **Selector rot is now cushioned, not eliminated.** The search-result card
+  selector goes through `kdp_adaptive.select()`, which saves each element's
+  fingerprint on every successful parse (`data/adaptive.db`) and relocates it
+  by similarity when Amazon renames an attribute. A relocation raises a
+  visible warning — running on similarity matches means the selector still
+  needs updating, and a silent recovery would trade one hidden failure for
+  another. It also makes a redesign distinguishable from a block, which the
+  old code could not do.
+- **Reddit** needs free official API credentials for engagement numbers; the
+  RSS fallback carries titles only. **X/Twitter and TikTok/BookTok are not
+  measured at all** — see the source table in [DEPLOY.md](DEPLOY.md) for the
+  probe evidence. The tool reports them as excluded instead of inventing a
+  signal.
 - No search-volume numbers (autocomplete presence/position is the proxy).
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+The suite is offline: network is injected into every source adapter as a
+`fetch` callable, so tests are deterministic and fast. The money maths has a
+regression test (`TestOneSourceOfTruth`) asserting the CLI dashboard and the
+web royalty engine return identical figures — they had silently diverged
+before `kdp_estimates.py` existed.
 
 ## Legal
 
