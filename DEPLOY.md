@@ -45,6 +45,29 @@ Any platform that runs a Dockerfile works as-is. Two production notes:
 | `GET /api/research` | List jobs with status/progress |
 | `GET /api/research/{id}` | Job detail; includes the full result bundle when finished |
 | `DELETE /api/research/{id}` | Remove a finished job |
+| `POST /api/trends` | Trend Radar scan — `{seed, marketplace, validate_top, proxies}`: Google + YouTube + Reddit demand, cross-checked against live Amazon, quadrant-ranked (GO/ANGLE/VERIFY/AVOID) |
+| `POST /api/royalty` | Break-even calculator — `{goal_month, format, price, pages, color, file_mb, research_job_id}` → royalty/sale, required sales/day, required BSR, live-shelf feasibility |
+| `POST /api/research/{id}/brief` | Generate the Niche Brief (verdict, gates, break-even, evidence, angles) for a finished job |
+
+## AI narrative (optional)
+
+The Niche Brief always ships its deterministic layer (gates, break-even,
+evidence). Set ONE of these to add the grounded analyst narrative:
+
+```bash
+GEMINI_API_KEY=...        # + optional GEMINI_MODEL (default gemini-2.5-flash)
+ANTHROPIC_API_KEY=...     # + optional ANTHROPIC_MODEL (default claude-sonnet-5)
+```
+
+The model receives only the computed data digest and must cite ASINs; if
+the call fails, the brief still renders and says the narrative is off.
+
+## Social sources — what to promise
+
+- Google + YouTube autocomplete: work from any IP, included in every scan.
+- Reddit: blocked from datacenter IPs (403) — works via residential proxies.
+- X/Twitter: deliberately excluded — logged-out X serves only a JavaScript
+  wall; access needs a logged-in account (ToS/ban risk) or the paid API.
 
 Jobs run one at a time (deliberate — polite scraping). The result bundle is
 the same JSON the CLI dashboard produces: summary KPIs, scored keywords,

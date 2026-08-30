@@ -7,45 +7,46 @@
 <style>
 :root{
   --paper:#FAF8F4; --ink:#201D24; --muted:#6A6472; --line:#E5E0D8; --card:#FFFFFF;
-  --accent:#8C2F39; --gold:#9A7422; --money:#2F7D5D; --bad:#A33C2E;
+  --accent:#8C2F39; --gold:#9A7422; --money:#2F7D5D; --bad:#A33C2E; --info:#2B4C7E;
   --chip-run:#E8EEF7; --chip-run-fg:#2B4C7E; --chip-done:#E7F1EC; --chip-done-fg:#1F5C44;
-  --chip-fail:#F7E7E4; --chip-fail-fg:#8C2F39; --hover:#F2EEE7;
+  --chip-fail:#F7E7E4; --chip-fail-fg:#8C2F39; --hover:#F2EEE7; --go:#2F7D5D; --angle:#9A7422;
 }
 @media (prefers-color-scheme: dark){
   :root{
     --paper:#191720; --ink:#EAE6E0; --muted:#9A93A5; --line:#332F3B; --card:#211E29;
-    --accent:#D0737E; --gold:#D2A94E; --money:#5CB893; --bad:#E08A7A;
+    --accent:#D0737E; --gold:#D2A94E; --money:#5CB893; --bad:#E08A7A; --info:#8FB4E8;
     --chip-run:#22304A; --chip-run-fg:#9DBCEB; --chip-done:#1E3A2E; --chip-done-fg:#8FD4B4;
-    --chip-fail:#40232A; --chip-fail-fg:#E8A0A8; --hover:#2A2634;
+    --chip-fail:#40232A; --chip-fail-fg:#E8A0A8; --hover:#2A2634; --go:#5CB893; --angle:#D2A94E;
   }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif}
-header{display:flex;align-items:baseline;gap:14px;padding:18px 24px;border-bottom:2px solid var(--ink)}
-header h1{font-family:Georgia,serif;font-size:20px;margin:0}
-header .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
-.layout{display:grid;grid-template-columns:330px 1fr;min-height:calc(100vh - 62px)}
+header{display:flex;align-items:center;gap:22px;padding:14px 24px;border-bottom:2px solid var(--ink);flex-wrap:wrap}
+header h1{font-family:Georgia,serif;font-size:19px;margin:0}
+nav{display:flex;gap:4px}
+nav button{background:none;border:none;font:inherit;font-weight:600;color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--accent);color:#fff}
+.layout{display:grid;grid-template-columns:330px 1fr;min-height:calc(100vh - 58px)}
 aside{border-right:1px solid var(--line);padding:18px;overflow-y:auto}
-main{padding:22px 26px;overflow-y:auto}
+main{padding:22px 26px;overflow-y:auto;min-width:0}
 h2{font-family:Georgia,serif;font-size:17px;margin:0 0 12px}
-h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:26px 0 8px}
+h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:24px 0 8px}
 label{display:block;font-size:12px;font-weight:600;margin:10px 0 3px}
 input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-button{cursor:pointer;font:inherit;font-weight:700;border:none;border-radius:7px;padding:9px 14px}
+button.btn{cursor:pointer;font:inherit;font-weight:700;border:none;border-radius:7px;padding:9px 14px}
 .primary{background:var(--accent);color:#fff;width:100%;margin-top:14px}
 .primary:disabled{opacity:.5;cursor:default}
 .ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent);width:100%;margin-top:8px}
+.mini{background:var(--accent);color:#fff;padding:6px 12px;font-size:12.5px}
 .job{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
-.job:hover{background:var(--hover)}
-.job.active{border-color:var(--accent);border-width:1.5px}
-.job .t{font-weight:700;font-size:13.5px}
-.job .m{font-size:11.5px;color:var(--muted);margin-top:2px}
+.job:hover{background:var(--hover)} .job.active{border-color:var(--accent);border-width:1.5px}
+.job .t{font-weight:700;font-size:13.5px} .job .m{font-size:11.5px;color:var(--muted);margin-top:2px}
 .chip{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:12px;padding:2px 8px}
 .st-running,.st-queued{background:var(--chip-run);color:var(--chip-run-fg)}
 .st-done{background:var(--chip-done);color:var(--chip-done-fg)}
-.st-partial{background:var(--chip-fail);color:var(--chip-fail-fg)}
-.st-failed{background:var(--chip-fail);color:var(--chip-fail-fg)}
+.st-partial,.st-failed{background:var(--chip-fail);color:var(--chip-fail-fg)}
+.kind{background:var(--hover);color:var(--muted)}
 .bar{height:5px;background:var(--line);border-radius:3px;margin-top:7px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0 8px}
@@ -53,8 +54,8 @@ button{cursor:pointer;font:inherit;font-weight:700;border:none;border-radius:7px
 .kpi .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .kpi .l{font-size:11px;color:var(--muted);margin-top:2px}
 .tablewrap{overflow-x:auto;margin:10px 0 4px}
-table{border-collapse:collapse;width:100%;font-size:13px;background:var(--card);min-width:640px}
-th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;text-align:left;color:var(--muted);border-bottom:2px solid var(--ink);padding:7px 10px;cursor:pointer;white-space:nowrap}
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--card);min-width:620px}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;text-align:left;color:var(--muted);border-bottom:2px solid var(--ink);padding:7px 10px;white-space:nowrap}
 td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td a{color:var(--accent);text-decoration:none}
@@ -68,118 +69,191 @@ td a{color:var(--accent);text-decoration:none}
 .book{display:flex;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px;text-decoration:none;color:inherit}
 .book:hover{border-color:var(--accent)}
 .book img{width:50px;height:74px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--line)}
-.book .t{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:3px}
-.book .m{font-size:11px;color:var(--muted)}
+.book .t{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:3px} .book .m{font-size:11px;color:var(--muted)}
 .ku{background:#ff9900;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px}
 .empty{color:var(--muted);text-align:center;padding:70px 20px;font-size:14px}
 .small{font-size:11.5px;color:var(--muted)}
+.q{display:inline-block;font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 8px;white-space:nowrap}
+.q-GO{background:var(--chip-done);color:var(--chip-done-fg)}
+.q-ANGLE{background:#F6ECD9;color:#7A5A14}
+.q-VERIFY{background:var(--chip-run);color:var(--chip-run-fg)}
+.q-AVOID{background:var(--chip-fail);color:var(--chip-fail-fg)}
+@media (prefers-color-scheme: dark){ .q-ANGLE{background:#3A3120;color:#E2C377} }
+.brief{background:var(--card);border:1.5px solid var(--ink);border-radius:12px;padding:18px 20px;margin:16px 0}
+.verdict{font-family:Georgia,serif;font-size:22px;font-weight:700}
+.v-VALIDATE{color:var(--money)} .v-BORDERLINE{color:var(--gold)} .v-SKIP{color:var(--bad)}
+.gate{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.gate b{min-width:64px}
+.g-PASS{color:var(--money)} .g-FAIL{color:var(--bad)} .g-UNKNOWN{color:var(--muted)}
+.becard{background:var(--hover);border-radius:9px;padding:12px 15px;margin:12px 0;font-size:13.5px;line-height:1.7}
+.narr{border-top:1px solid var(--line);margin-top:12px;padding-top:12px;font-size:13.5px}
+.narr h4{margin:10px 0 4px}
+.calcout{background:var(--card);border:1.5px solid var(--ink);border-radius:12px;padding:18px 20px;max-width:560px}
+.calcout .big{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
 @media (max-width:860px){.layout{grid-template-columns:1fr}aside{border-right:none;border-bottom:1px solid var(--line)}}
 </style>
 </head>
 <body>
-<header><h1>📚 KDP Niche Intelligence</h1><span class="tag">research → royalties</span></header>
+<header>
+  <h1>📚 KDP Niche Intelligence</h1>
+  <nav>
+    <button data-tab="research" class="on">Niche Research</button>
+    <button data-tab="trends">Trend Radar</button>
+    <button data-tab="calc">Royalty Calculator</button>
+  </nav>
+</header>
 <div class="layout">
 <aside>
-  <h2>New research</h2>
-  <form id="form">
-    <label>Seed keyword</label>
-    <input name="seed" placeholder='e.g. "kidney disease food list"' required minlength="2">
-    <div class="row2">
-      <div><label>Marketplace</label>
-        <select name="marketplace">
-          <option value="us" selected>US</option><option value="uk">UK</option><option value="ca">CA</option>
-          <option value="au">AU</option><option value="de">DE</option><option value="fr">FR</option>
-          <option value="it">IT</option><option value="es">ES</option><option value="jp">JP</option>
-          <option value="in">IN</option><option value="nl">NL</option><option value="se">SE</option>
-          <option value="br">BR</option><option value="mx">MX</option>
-        </select></div>
-      <div><label>Store</label>
-        <select name="store"><option value="kindle" selected>Kindle</option><option value="books">Print books</option></select></div>
-    </div>
-    <div class="row2">
-      <div><label>Keywords</label><input name="max_keywords" type="number" value="10" min="1" max="40"></div>
-      <div><label>Books to scan</label><input name="books" type="number" value="30" min="5" max="200"></div>
-    </div>
-    <div class="row2">
-      <div><label>Deep-dive books</label><input name="deep_dive" type="number" value="8" min="0" max="30"></div>
-      <div><label>Fingerprint</label>
-        <select name="impersonate"><option selected>chrome</option><option>edge</option><option>safari</option><option>firefox</option></select></div>
-    </div>
-    <label>Rotating proxies <span class="small">(optional, comma-separated)</span></label>
-    <input name="proxies" placeholder="http://user:pass@ip1:8080, http://…">
-    <button class="primary" type="submit">Run research</button>
-    <button class="ghost" type="button" id="demoBtn">Load demo dataset</button>
-  </form>
-  <h3>Research jobs</h3>
+  <div id="pane-research">
+    <h2>New research</h2>
+    <form id="researchForm">
+      <label>Seed keyword</label>
+      <input name="seed" placeholder='e.g. "kidney disease food list"' required minlength="2">
+      <div class="row2">
+        <div><label>Marketplace</label><select name="marketplace" class="mkts"></select></div>
+        <div><label>Store</label><select name="store"><option value="kindle" selected>Kindle</option><option value="books">Print books</option></select></div>
+      </div>
+      <div class="row2">
+        <div><label>Keywords</label><input name="max_keywords" type="number" value="10" min="1" max="40"></div>
+        <div><label>Books to scan</label><input name="books" type="number" value="30" min="5" max="200"></div>
+      </div>
+      <div class="row2">
+        <div><label>Deep-dive books</label><input name="deep_dive" type="number" value="8" min="0" max="30"></div>
+        <div><label>Fingerprint</label><select name="impersonate"><option selected>chrome</option><option>edge</option><option>safari</option><option>firefox</option></select></div>
+      </div>
+      <label>Rotating proxies <span class="small">(optional, comma-separated)</span></label>
+      <input name="proxies" placeholder="http://user:pass@ip1:8080, …">
+      <button class="btn primary" type="submit">Run research</button>
+      <button class="btn ghost" type="button" id="demoBtn">Load demo dataset</button>
+    </form>
+  </div>
+  <div id="pane-trends" hidden>
+    <h2>Trend Radar</h2>
+    <p class="small">Reads Google + YouTube + Reddit for what people ask about the topic right now, then validates every candidate against live Amazon.</p>
+    <form id="trendForm">
+      <label>Topic</label>
+      <input name="seed" placeholder='e.g. "vagus nerve", "adhd"' required minlength="2">
+      <div class="row2">
+        <div><label>Marketplace</label><select name="marketplace" class="mkts"></select></div>
+        <div><label>Validate top</label><input name="validate_top" type="number" value="8" min="1" max="20"></div>
+      </div>
+      <label>Rotating proxies <span class="small">(needed for Reddit + heavy use)</span></label>
+      <input name="proxies" placeholder="http://user:pass@ip1:8080, …">
+      <button class="btn primary" type="submit">Scan trends</button>
+    </form>
+  </div>
+  <div id="pane-calc" hidden>
+    <h2>Royalty calculator</h2>
+    <form id="calcForm">
+      <label>Monthly royalty goal ($)</label>
+      <input name="goal_month" type="number" value="1000" min="50" step="50">
+      <div class="row2">
+        <div><label>Format</label>
+          <select name="format">
+            <option value="ebook" selected>eBook</option><option value="paperback">Paperback</option>
+            <option value="hardcover">Hardcover</option><option value="audiobook_acx">Audiobook (ACX excl.)</option>
+            <option value="audiobook_wide">Audiobook (wide)</option>
+          </select></div>
+        <div><label>List price ($)</label><input name="price" type="number" value="4.99" min="0.99" step="0.5"></div>
+      </div>
+      <div class="row2">
+        <div><label>Pages</label><input name="pages" type="number" value="120" min="24" max="900"></div>
+        <div><label>eBook size (MB)</label><input name="file_mb" type="number" value="2" min="0.1" step="0.5"></div>
+      </div>
+      <label><input type="checkbox" name="color" style="width:auto"> Color interior (print)</label>
+      <label>Check feasibility against research job</label>
+      <select name="research_job_id" id="feasJob"><option value="">— none —</option></select>
+      <button class="btn primary" type="submit">Calculate</button>
+    </form>
+  </div>
+  <h3>Jobs</h3>
   <div id="jobs"></div>
 </aside>
-<main id="main"><div class="empty">Run a research job — or load the demo dataset — to see the dashboard.</div></main>
+<main id="main"><div class="empty">Run a research job, scan a trend, or open the calculator.</div></main>
 </div>
 <script>
 const $ = s => document.querySelector(s);
-let activeJob = null, pollTimer = null, sortKey = "opportunity", sortDir = -1;
+const MKTS = ["us","uk","ca","au","de","fr","it","es","jp","in","nl","se","br","mx"];
+document.querySelectorAll(".mkts").forEach(sel => sel.innerHTML = MKTS.map(m=>`<option ${m==="us"?"selected":""}>${m}</option>`).join(""));
+let activeJob = null, pollTimer = null, sortKey = "opportunity", sortDir = -1, tab = "research";
 
 const api = async (path, opts) => {
-  const r = await fetch("/api" + path, opts);
+  const r = await fetch("/api"+path, opts);
   if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
   return r.json();
 };
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmt = n => n == null ? "?" : Number(n).toLocaleString("en-US");
+const md = t => esc(t).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/^### (.+)$/gm,"<h4>$1</h4>").replace(/^## (.+)$/gm,"<h4>$1</h4>").replace(/^# (.+)$/gm,"<h4>$1</h4>").replace(/\n\n/g,"<br><br>");
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x===b));
+  ["research","trends","calc"].forEach(p => $("#pane-"+p).hidden = p!==tab);
+  if (tab==="calc") { $("#main").innerHTML = '<div class="empty">Fill the calculator to see break-even math.</div>'; loadFeasJobs(); }
+});
 
 async function refreshJobs(){
   const jobs = await api("/research");
   $("#jobs").innerHTML = jobs.length ? jobs.map(j => `
     <div class="job ${j.id===activeJob?"active":""}" onclick="openJob('${j.id}')">
       <div class="t">${esc(j.seed)} ${j.demo?'<span class="small">(demo)</span>':""}</div>
-      <div class="m">${j.marketplace.toUpperCase()} · ${j.store} · ${esc(j.created_at.slice(0,16).replace("T"," "))}</div>
+      <div class="m"><span class="chip kind">${j.kind||"research"}</span> ${j.marketplace.toUpperCase()} · ${esc((j.created_at||"").slice(0,16).replace("T"," "))}</div>
       <div class="m"><span class="chip st-${j.status}">${j.status}</span> ${j.status==="running"?esc(j.stage):""}</div>
       ${["running","queued"].includes(j.status)?`<div class="bar"><i style="width:${j.pct}%"></i></div>`:""}
     </div>`).join("") : '<div class="small">No jobs yet.</div>';
   return jobs;
 }
-
-async function openJob(id){
-  activeJob = id;
-  clearInterval(pollTimer);
-  const tick = async () => {
-    const [job] = await Promise.all([api("/research/"+id), refreshJobs()]);
-    render(job);
-    if (["done","partial","failed"].includes(job.status)) clearInterval(pollTimer);
-  };
-  await tick();
-  pollTimer = setInterval(tick, 2500);
+async function loadFeasJobs(){
+  const jobs = await api("/research");
+  $("#feasJob").innerHTML = '<option value="">— none —</option>' + jobs
+    .filter(j => (j.kind||"research")==="research" && ["done","partial"].includes(j.status))
+    .map(j => `<option value="${j.id}">${esc(j.seed)} (${j.marketplace.toUpperCase()})</option>`).join("");
 }
 
-function render(job){
-  if (job.status === "failed")
-    return $("#main").innerHTML = `<div class="warn"><b>Job failed.</b> ${esc(job.message)}</div>`;
-  if (!job.result)
-    return $("#main").innerHTML = `<div class="empty"><b>${esc(job.seed)}</b> — ${esc(job.stage||"queued")}…<br>
-      <div class="bar" style="max-width:340px;margin:16px auto"><i style="width:${job.pct}%"></i></div>
-      <span class="small">${esc(job.message)}</span></div>`;
+async function openJob(id){
+  activeJob = id; clearInterval(pollTimer);
+  const tick = async () => {
+    const [job] = await Promise.all([api("/research/"+id), refreshJobs()]);
+    (job.kind==="trends" ? renderTrends : renderResearch)(job);
+    if (["done","partial","failed"].includes(job.status)) clearInterval(pollTimer);
+  };
+  await tick(); pollTimer = setInterval(tick, 2500);
+}
+window.openJob = openJob;
 
-  const r = job.result, s = r.summary, cur = r.currency || "$";
-  const kws = [...r.keywords].sort((a,b) => (a[sortKey]??-1) < (b[sortKey]??-1) ? sortDir : -sortDir);
-  const money = r.book_intel.filter(b => b.est_monthly_royalty).sort((a,b) => b.est_monthly_royalty - a.est_monthly_royalty);
+function progressView(job){
+  return `<div class="empty"><b>${esc(job.seed)}</b> — ${esc(job.stage||"queued")}…<br>
+    <div class="bar" style="max-width:340px;margin:16px auto"><i style="width:${job.pct}%"></i></div>
+    <span class="small">${esc(job.message)}</span></div>`;
+}
+
+/* ---------- research view ---------- */
+function renderResearch(job){
+  if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Job failed.</b> ${esc(job.message)}</div>`;
+  if (!job.result) return $("#main").innerHTML = progressView(job);
+  const r = job.result, s = r.summary || {}, cur = r.currency || "$";
+  const kws = [...(r.keywords||[])].sort((a,b) => (a[sortKey]??-1) < (b[sortKey]??-1) ? sortDir : -sortDir);
+  const money = (r.book_intel||[]).filter(b=>b.est_monthly_royalty).sort((a,b)=>b.est_monthly_royalty-a.est_monthly_royalty);
 
   $("#main").innerHTML = `
-    <h2>“${esc(r.seed)}” <span class="small">· Amazon ${r.marketplace.toUpperCase()} · ${r.store} · focus: “${esc(r.focus_keyword)}” · ${esc(r.generated_at)}</span></h2>
-    ${(r.warnings||[]).map(w => `<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+    <h2>“${esc(r.seed)}” <span class="small">· ${r.marketplace.toUpperCase()} · ${esc(r.store||"")} · focus “${esc(r.focus_keyword)}”</span>
+      <button class="btn mini" style="float:right" onclick="makeBrief('${job.id}')">🧠 Generate Niche Brief</button></h2>
+    ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+    <div id="briefBox">${r.brief ? briefHtml(r.brief, cur) : ""}</div>
     <div class="kpis">
       <div class="kpi"><div class="v">${s.total_results!=null?"~"+fmt(s.total_results):"?"}</div><div class="l">competing books</div></div>
       <div class="kpi"><div class="v">${cur}${fmt(Math.round(s.royalty_pool_month||0))}/mo</div><div class="l">est. royalty pool (deep-dived)</div></div>
       <div class="kpi"><div class="v">${fmt(s.median_reviews)}</div><div class="l">median reviews</div></div>
       <div class="kpi"><div class="v">${s.ku_share_pct!=null?s.ku_share_pct+"%":"?"}</div><div class="l">Kindle Unlimited</div></div>
       <div class="kpi"><div class="v">${s.avg_buy_price!=null?cur+s.avg_buy_price:"—"}</div><div class="l">avg buy price</div></div>
-      <div class="kpi"><div class="v">${s.velocity_pct_90d!=null?s.velocity_pct_90d+"%":"?"}</div><div class="l">top sellers &lt;90 days old</div></div>
+      <div class="kpi"><div class="v">${s.velocity_pct_90d!=null?s.velocity_pct_90d+"%":"?"}</div><div class="l">top sellers &lt;90d old</div></div>
     </div>
-
-    <h3>Keyword opportunities · click headers to sort</h3>
+    <h3>Keyword opportunities</h3>
     <div class="tablewrap"><table>
-      <tr>${[["keyword","Keyword"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100 rev"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
-        .map(([k,l]) => `<th onclick="setSort('${k}')">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</th>`).join("")}</tr>
-      ${kws.map(k => `<tr>
+      <tr>${[["keyword","Keyword"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
+        .map(([k,l])=>`<th style="cursor:pointer" onclick="setSort('${k}')">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</th>`).join("")}</tr>
+      ${kws.map(k=>`<tr>
         <td><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.keyword)}</a></td>
         <td class="num">${fmt(k.total_results)}</td><td class="num">${Math.round(k.median_reviews)}</td>
         <td class="num">${Math.round(k.pct_under_100)}%</td><td class="num">${Math.round(k.ku_share)}%</td>
@@ -187,56 +261,120 @@ function render(job){
         <td class="num"><b>${k.opportunity}</b><span class="scorebar"><i style="width:${k.opportunity}%"></i></span></td>
         <td>${esc(k.verdict)}</td></tr>`).join("")}
     </table></div>
+    ${money.length?`<h3>Money proof (BSR → est. royalties)</h3><div class="tablewrap"><table>
+      <tr><th>Book</th><th>BSR</th><th>Price</th><th>Sales/day</th><th>Royalty/mo</th><th>Published</th></tr>
+      ${money.map(b=>`<tr><td><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc((b.title||"").slice(0,64))}</a></td>
+        <td class="num">${fmt(b.bsr)}</td><td class="num">${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
+        <td class="num">${b.est_sales_per_day??"—"}</td><td class="num"><b>${cur}${fmt(Math.round(b.est_monthly_royalty))}</b></td>
+        <td class="num">${esc(b.publication_date||"?")}</td></tr>`).join("")}</table></div>`:""}
+    ${(r.title_gaps||[]).length?`<h3>Title gaps</h3><div>${r.title_gaps.map(g=>`<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>`:""}
+    ${(r.title_ngrams||[]).length?`<h3>What page-1 titles are made of</h3><div>${r.title_ngrams.map(([g,c])=>`<span class="tagchip">${esc(g)} ×${c}</span>`).join("")}</div>`:""}
+    ${(r.complaints||[]).length?`<h3>What buyers complain about</h3>${r.complaints.slice(0,10).map(c=>`<div class="complaint">
+      <div class="h">${"★".repeat(Math.round(c.rating))} ${esc(c.title||"(no title)")} <span class="small">— “${esc(c.book_title)}”</span></div>${esc(c.body)}</div>`).join("")}`:""}
+    ${(r.books||[]).length?`<h3>Books in the niche (${r.books.length})</h3><div class="grid">${r.books.slice(0,40).map(b=>`
+      <a class="book" href="${esc(b.url)}" target="_blank" rel="noopener">
+        ${b.image_url?`<img loading="lazy" src="${esc(b.image_url)}" alt="">`:'<div style="width:50px;height:74px"></div>'}
+        <div><div class="t">${esc((b.title||"").slice(0,72))}</div>
+        <div class="m">${b.kindle_unlimited?'<span class="ku">KU</span> ':''}${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU only":"—")} · ${b.rating??"—"}★ · ${fmt(b.reviews)} rev</div></div></a>`).join("")}</div>`:""}`;
+}
+window.setSort = k => { sortDir = (sortKey===k)?-sortDir:-1; sortKey=k; if(activeJob) openJob(activeJob); };
 
-    ${money.length ? `<h3>Money proof · BSR → estimated royalties</h3>
+/* ---------- niche brief ---------- */
+function briefHtml(b, cur){
+  const be = b.breakeven || {};
+  const feas = be.feasibility || {};
+  return `<div class="brief">
+    <div class="verdict v-${b.verdict}">${b.verdict}</div>
+    <div class="small">${esc(b.verdict_reason)} · goal ${cur}${fmt(b.goal_month)}/mo · generated from live data${b.narrative_source&&!b.narrative_source.startsWith("none")?" + AI narrative ("+esc(b.narrative_source)+")":""}</div>
+    <div style="margin-top:10px">${b.gates.map(g=>`<div class="gate"><b class="g-${g.status}">${g.status}</b> <b>${esc(g.gate)}</b> <span>${esc(g.detail)}</span></div>`).join("")}</div>
+    ${be.royalty_per_sale?`<div class="becard"><b>Break-even at the niche's price (${cur}${be.price}):</b>
+      ${cur}${be.royalty_per_sale}/sale (${esc(be.plan)}) → <b>${be.sales_needed_per_day} sales/day</b>
+      (${fmt(be.sales_needed_per_month)}/mo) → <b>BSR ≈ ${fmt(be.bsr_needed)}</b> needed.<br>
+      ${feas.read?esc(feas.read):""} ${be.ku_note?"<br>"+esc(be.ku_note):""}</div>`:""}
+    ${b.ku_read?`<div class="small" style="margin-top:6px">📖 ${esc(b.ku_read)}</div>`:""}
+    ${(b.differentiation?.title_gaps||[]).length?`<div style="margin-top:8px"><b>Angles:</b> ${b.differentiation.title_gaps.map(g=>`<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>`:""}
+    ${b.narrative?`<div class="narr">${md(b.narrative)}</div>`:`<div class="small" style="margin-top:8px">🧠 ${esc(b.narrative_source||"")}</div>`}
+  </div>`;
+}
+window.makeBrief = async id => {
+  $("#briefBox").innerHTML = '<div class="empty">Generating brief…</div>';
+  try { const b = await api(`/research/${id}/brief?goal_month=1000`, {method:"POST"}); $("#briefBox").innerHTML = briefHtml(b, "$"); }
+  catch(e){ $("#briefBox").innerHTML = `<div class="warn">${esc(e.message)}</div>`; }
+};
+
+/* ---------- trend radar view ---------- */
+function renderTrends(job){
+  if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Scan failed.</b> ${esc(job.message)}</div>`;
+  if (!job.result) return $("#main").innerHTML = progressView(job);
+  const r = job.result, src = r.sources || {};
+  $("#main").innerHTML = `
+    <h2>📡 Trend Radar: “${esc(r.topic)}” <span class="small">· Amazon ${r.marketplace.toUpperCase()} cross-check · ${esc(r.generated_at)}</span></h2>
+    ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+    <h3>Validated opportunities <span class="small">(demand breadth × live Amazon shelf)</span></h3>
     <div class="tablewrap"><table>
-      <tr><th>Book</th><th>BSR</th><th>Category rank</th><th>Price</th><th>Est. sales/day</th><th>Est. royalty/mo</th><th>Published</th></tr>
-      ${money.map(b => `<tr>
-        <td><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.title.slice(0,64))}</a></td>
-        <td class="num">${fmt(b.bsr)}</td><td class="small">${esc(b.category_rank||"—")}</td>
-        <td class="num">${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
-        <td class="num">${b.est_sales_per_day??"—"}</td>
-        <td class="num"><b>${cur}${fmt(Math.round(b.est_monthly_royalty))}</b></td>
-        <td class="num">${esc(b.publication_date||"?")}</td></tr>`).join("")}
-    </table></div>` : ""}
-
-    ${(r.title_gaps||[]).length ? `<h3>Title gaps · searched phrases few titles use</h3>
-      <div>${r.title_gaps.map(g => `<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>` : ""}
-
-    ${(r.title_ngrams||[]).length ? `<h3>What page-1 titles are made of</h3>
-      <div>${r.title_ngrams.map(([g,c]) => `<span class="tagchip">${esc(g)} ×${c}</span>`).join("")}</div>` : ""}
-
-    ${(r.complaints||[]).length ? `<h3>What buyers complain about (1–3★)</h3>
-      ${r.complaints.slice(0,10).map(c => `<div class="complaint">
-        <div class="h">${"★".repeat(Math.round(c.rating))} ${esc(c.title||"(no title)")} <span class="small">— on “${esc(c.book_title)}”</span></div>
-        ${esc(c.body)}</div>`).join("")}` : ""}
-
-    ${(r.books||[]).length ? `<h3>Books in the niche (${r.books.length})</h3>
-      <div class="grid">${r.books.slice(0,40).map(b => `
-        <a class="book" href="${esc(b.url)}" target="_blank" rel="noopener">
-          ${b.image_url?`<img loading="lazy" src="${esc(b.image_url)}" alt="">`:'<div style="width:50px;height:74px"></div>'}
-          <div><div class="t">${esc(b.title.slice(0,72))}</div>
-          <div class="m">${b.kindle_unlimited?'<span class="ku">KU</span> ':''}${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU only":"—")} · ${b.rating??"—"}★ · ${fmt(b.reviews)} reviews</div></div>
-        </a>`).join("")}</div>` : ""}`;
+      <tr><th>Quadrant</th><th>Phrase</th><th>Sources</th><th>Amazon results</th><th>Med rev</th><th>In titles</th><th>Score</th></tr>
+      ${(r.validated||[]).map(v=>{const q=v.quadrant.split(" —")[0];return `<tr>
+        <td><span class="q q-${q}">${esc(q)}</span><div class="small">${esc(v.quadrant.split("— ")[1]||"")}</div></td>
+        <td>${v.url?`<a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.phrase)}</a>`:esc(v.phrase)}</td>
+        <td>${v.sources.map(s=>`<span class="tagchip">${esc(s)}</span>`).join("")}</td>
+        <td class="num">${fmt(v.total_results)}</td><td class="num">${v.median_reviews!=null?Math.round(v.median_reviews):"—"}</td>
+        <td class="num">${v.phrase_in_titles??"—"}</td>
+        <td class="num">${v.opportunity!=null?`<b>${v.opportunity}</b><span class="scorebar"><i style="width:${v.opportunity}%"></i></span>`:"—"}</td></tr>`}).join("")}
+    </table></div>
+    <h3>All mined candidates (${(r.candidates||[]).length})</h3>
+    <div>${(r.candidates||[]).map(c=>`<span class="tagchip">${esc(c.phrase)} <span class="small">×${c.breadth}</span></span>`).join("")}</div>
+    <h3>Raw source signals</h3>
+    <div class="row2">
+      <div><b>Google asks</b><div class="small">${(src.google||[]).slice(0,15).map(esc).join(" · ")}</div></div>
+      <div><b>YouTube asks</b><div class="small">${(src.youtube||[]).slice(0,15).map(esc).join(" · ")}</div></div>
+    </div>
+    ${(src.reddit?.posts||[]).length?`<h3>Reddit threads</h3>${src.reddit.posts.slice(0,8).map(p=>`
+      <div class="complaint" style="border-left-color:var(--info)"><a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>
+      <div class="small">r/${esc(p.subreddit)} · ${fmt(p.score)} upvotes · ${fmt(p.comments)} comments</div></div>`).join("")}`:""}
+    <p class="small">Excluded: X/Twitter — ${esc(src.excluded?.x_twitter||"")}</p>`;
 }
 
-window.setSort = k => { sortDir = (sortKey === k) ? -sortDir : -1; sortKey = k; if (activeJob) openJob(activeJob); };
-window.openJob = openJob;
-
-$("#form").addEventListener("submit", async e => {
+/* ---------- forms ---------- */
+$("#researchForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const f = new FormData(e.target), body = Object.fromEntries(f.entries());
-  ["max_keywords","books","deep_dive"].forEach(k => body[k] = +body[k]);
-  body.proxies = body.proxies ? body.proxies.split(",").map(s => s.trim()).filter(Boolean) : null;
-  const btn = e.target.querySelector(".primary"); btn.disabled = true;
-  try { const {job_id} = await api("/research", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}); openJob(job_id); }
-  catch (err) { alert(err.message); }
-  finally { btn.disabled = false; }
+  const body = Object.fromEntries(new FormData(e.target).entries());
+  ["max_keywords","books","deep_dive"].forEach(k=>body[k]=+body[k]);
+  body.proxies = body.proxies ? body.proxies.split(",").map(s=>s.trim()).filter(Boolean) : null;
+  try { const {job_id} = await api("/research",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); openJob(job_id); }
+  catch(err){ alert(err.message); }
 });
 $("#demoBtn").addEventListener("click", async () => {
-  const {job_id} = await api("/research", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({seed:"air fryer", demo:true})});
+  const {job_id} = await api("/research",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seed:"air fryer",demo:true})});
   openJob(job_id);
+});
+$("#trendForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target).entries());
+  body.validate_top = +body.validate_top;
+  body.proxies = body.proxies ? body.proxies.split(",").map(s=>s.trim()).filter(Boolean) : null;
+  try { const {job_id} = await api("/trends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); openJob(job_id); }
+  catch(err){ alert(err.message); }
+});
+$("#calcForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), body = Object.fromEntries(f.entries());
+  ["goal_month","price","file_mb"].forEach(k=>body[k]=+body[k]); body.pages=+body.pages;
+  body.color = f.get("color") === "on";
+  if (!body.research_job_id) delete body.research_job_id;
+  try {
+    const r = await api("/royalty",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const feas = r.feasibility || {};
+    $("#main").innerHTML = `<h2>Break-even for ${esc(r.format)} @ $${r.price}</h2><div class="calcout">
+      <div>Royalty per sale <span class="small">(${esc(r.plan)}${r.print_cost?` · printing $${r.print_cost}`:""})</span></div>
+      <div class="big">$${r.royalty_per_sale}</div>
+      <div style="margin-top:10px">To earn <b>$${fmt(r.goal_month)}/month</b>:</div>
+      <div class="big">${r.sales_needed_per_day} sales/day</div>
+      <div class="small">${fmt(r.sales_needed_per_month)} sales/month → required rank ≈ <b>BSR ${fmt(r.bsr_needed)}</b></div>
+      ${feas.read?`<div class="becard" style="margin-top:12px">${esc(feas.read)}<br><span class="small">Niche BSRs: best ${fmt(feas.niche_best_bsr)} · median ${fmt(feas.niche_median_bsr)} · worst ${fmt(feas.niche_worst_bsr)}</span></div>`:""}
+      ${r.ku_note?`<div class="small" style="margin-top:8px">📖 ${esc(r.ku_note)}</div>`:""}
+      ${(r.notes||[]).map(n=>`<div class="small">· ${esc(n)}</div>`).join("")}
+    </div>`;
+  } catch(err){ alert(err.message); }
 });
 refreshJobs(); setInterval(refreshJobs, 5000);
 </script>

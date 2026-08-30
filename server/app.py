@@ -22,7 +22,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import brief as brief_mod
 import pipeline
+import royalty as royalty_mod
+import trends as trends_mod
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SERVER_DIR)
@@ -56,6 +59,10 @@ with _db() as conn:
             result TEXT
         )"""
     )
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN kind TEXT DEFAULT 'research'")
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
 
 def _update(job_id: str, **fields: Any) -> None:
@@ -68,6 +75,7 @@ def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
     params = json.loads(row["params"])
     return {
         "id": row["id"],
+        "kind": row["kind"] if "kind" in row.keys() else "research",
         "created_at": row["created_at"],
         "seed": params.get("seed"),
         "marketplace": params.get("marketplace", "us"),
@@ -80,14 +88,17 @@ def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
-def _worker(job_id: str, params: dict[str, Any]) -> None:
+def _worker(job_id: str, params: dict[str, Any], kind: str = "research") -> None:
     _update(job_id, status="running", stage="starting", message="Worker picked up the job")
 
     def progress(stage: str, pct: int, message: str) -> None:
         _update(job_id, stage=stage, pct=pct, message=message)
 
     try:
-        bundle = pipeline.run_research(params, progress)
+        if kind == "trends":
+            bundle = trends_mod.run_trend_radar(params, progress)
+        else:
+            bundle = pipeline.run_research(params, progress)
         status = "partial" if bundle.get("warnings") and not bundle.get("books") else "done"
         if bundle.get("warnings") and bundle.get("books"):
             status = "done"  # warnings but usable data
@@ -131,15 +142,77 @@ def create_research(req: ResearchRequest, x_api_key: Optional[str] = Header(defa
         raise HTTPException(422, f"Unknown marketplace {req.marketplace!r}")
     if req.store not in pipeline.STORES:
         raise HTTPException(422, f"Unknown store {req.store!r}")
+    return _enqueue(req.model_dump(), "research")
+
+
+def _enqueue(params: dict[str, Any], kind: str) -> dict[str, str]:
     job_id = uuid.uuid4().hex[:12]
-    params = req.model_dump()
     with _db_lock, _db() as conn:
         conn.execute(
-            "INSERT INTO jobs (id, created_at, params, status) VALUES (?,?,?,?)",
-            [job_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), json.dumps(params), "queued"],
+            "INSERT INTO jobs (id, created_at, params, status, kind) VALUES (?,?,?,?,?)",
+            [job_id, datetime.now(timezone.utc).isoformat(timespec="seconds"), json.dumps(params), "queued", kind],
         )
-    _executor.submit(_worker, job_id, params)
+    _executor.submit(_worker, job_id, params, kind)
     return {"job_id": job_id}
+
+
+class TrendRequest(BaseModel):
+    seed: str = Field(min_length=2, max_length=120)
+    marketplace: str = "us"
+    store: str = "kindle"
+    validate_top: int = Field(default=8, ge=1, le=20)
+    impersonate: str = "edge"
+    plain_headers: bool = False
+    proxy: Optional[str] = None
+    proxies: Optional[list[str]] = None
+
+
+@app.post("/api/trends")
+def create_trends(req: TrendRequest, x_api_key: Optional[str] = Header(default=None)) -> dict[str, str]:
+    _check_key(x_api_key)
+    return _enqueue(req.model_dump(), "trends")
+
+
+class RoyaltyRequest(BaseModel):
+    goal_month: float = Field(default=1000, gt=0, le=1_000_000)
+    format: str = "ebook"  # ebook | paperback | hardcover | audiobook_acx | audiobook_wide
+    price: float = Field(gt=0, le=500)
+    pages: int = Field(default=120, ge=24, le=900)
+    color: bool = False
+    file_mb: float = Field(default=2.0, gt=0, le=100)
+    research_job_id: Optional[str] = None  # feasibility against that job's deep-dived BSRs
+
+
+@app.post("/api/royalty")
+def royalty_calc(req: RoyaltyRequest) -> dict[str, Any]:
+    niche_bsrs = None
+    if req.research_job_id:
+        with _db() as conn:
+            row = conn.execute("SELECT result FROM jobs WHERE id=?", [req.research_job_id]).fetchone()
+        if row and row["result"]:
+            intel = json.loads(row["result"]).get("book_intel", [])
+            niche_bsrs = [b["bsr"] for b in intel if b.get("bsr")]
+    try:
+        return royalty_mod.break_even(
+            req.goal_month, req.format, req.price, pages=req.pages,
+            color=req.color, file_mb=req.file_mb, niche_bsrs=niche_bsrs,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+
+@app.post("/api/research/{job_id}/brief")
+def make_brief(job_id: str, goal_month: float = 1000) -> dict[str, Any]:
+    with _db() as conn:
+        row = conn.execute("SELECT result FROM jobs WHERE id=?", [job_id]).fetchone()
+    if not row or not row["result"]:
+        raise HTTPException(409, "Job has no result yet")
+    bundle = json.loads(row["result"])
+    b = brief_mod.build_brief(bundle, goal_month=goal_month)
+    b = brief_mod.enhance_with_llm(b)
+    bundle["brief"] = b
+    _update(job_id, result=json.dumps(bundle, default=str))
+    return b
 
 
 @app.get("/api/research")
