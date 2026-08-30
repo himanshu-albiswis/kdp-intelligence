@@ -152,7 +152,9 @@ def _call_gemini(digest: str) -> str:
         f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
         data=json.dumps({
             "contents": [{"parts": [{"text": _PROMPT + digest}]}],
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 700},
+            # Gemini 2.5+/3.x spend output budget on internal reasoning first,
+            # so the cap must leave room for both thinking and the answer
+            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 3000},
         }).encode(),
         headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY},
     )
