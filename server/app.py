@@ -38,6 +38,7 @@ import pipeline
 from discovery import pipeline as discovery_pipeline
 from discovery.store import DiscoveryStore
 import royalty as royalty_mod
+import teardown as teardown_mod
 import trends as trends_mod
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -114,14 +115,17 @@ def _worker(job_id: str, params: dict[str, Any], kind: str = "research") -> None
         _update(job_id, stage=stage, pct=pct, message=message)
 
     try:
-        if kind == "discovery":
+        if kind == "teardown":
+            bundle = teardown_mod.run_teardown(params, progress)
+        elif kind == "discovery":
             bundle = discovery_pipeline.run_discovery(params, progress, store=DISCOVERY_STORE)
         elif kind == "trends":
             bundle = trends_mod.run_trend_radar(params, progress)
         else:
             bundle = pipeline.run_research(params, progress)
         # "partial" means warnings with nothing usable behind them.
-        payload = bundle.get("books") or bundle.get("cards") or bundle.get("validated")
+        payload = (bundle.get("books") or bundle.get("cards")
+                   or bundle.get("validated") or bundle.get("rows"))
         status = "partial" if bundle.get("warnings") and not payload else "done"
         _update(job_id, status=status, pct=100, stage="done",
                 message="; ".join(bundle.get("warnings", [])) or "Complete",
@@ -192,6 +196,11 @@ def _enqueue(params: dict[str, Any], kind: str) -> dict[str, str]:
     return {"job_id": job_id}
 
 
+class TeardownRequest(BaseModel):
+    """Reverse-ASIN: paste ASINs or Amazon links, get one row per book."""
+    identifiers: str = Field(min_length=8, max_length=4000)
+
+
 class DiscoverRequest(BaseModel):
     """No seed keyword — that is the point of Discovery."""
     window: str = Field(default="7d", pattern="^(24h|7d|30d)$")
@@ -210,6 +219,15 @@ class TrendRequest(BaseModel):
     plain_headers: bool = False
     proxy: Optional[str] = None
     proxies: Optional[list[str]] = None
+
+
+@app.post("/api/teardown")
+def create_teardown(req: TeardownRequest, x_api_key: Optional[str] = Header(default=None)) -> dict[str, str]:
+    _check_key(x_api_key)
+    found = teardown_mod.parse_identifiers(req.identifiers)
+    if not found:
+        raise HTTPException(400, "No ASIN or Amazon link found in that text")
+    return _enqueue({**req.model_dump(), "label": f"teardown · {len(found)} book(s)"}, "teardown")
 
 
 @app.post("/api/discover")

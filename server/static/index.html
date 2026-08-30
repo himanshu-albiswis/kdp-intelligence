@@ -353,6 +353,16 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
   .ev a:hover{color:var(--accent)}
   .q-GOLDMINE{background:color-mix(in srgb,var(--money) 24%,transparent);color:var(--money)}
   .q-CROWDED{background:color-mix(in srgb,var(--risk) 18%,transparent);color:var(--risk)}
+  textarea{width:100%;padding:var(--s3);border:1px solid var(--stroke-strong);border-radius:var(--r-ctl);
+    background:var(--glass-inset);color:var(--ink);font:inherit;font-size:13px;resize:vertical;
+    font-family:"IBM Plex Mono",monospace;line-height:1.6}
+  textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
+  table.teardown{min-width:0;font-size:13px}
+  table.teardown th{position:static;width:150px;text-align:left;vertical-align:top;
+    background:none;border:none;padding:var(--s2) var(--s3) var(--s2) 0;
+    font-size:10px;letter-spacing:.09em;color:var(--faint)}
+  table.teardown td{border-top:1px solid var(--stroke);padding:var(--s2) 0}
+  .na{color:var(--faint)}
 </style>
 </head>
 <body>
@@ -363,6 +373,7 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     <button data-tab="research" class="on">Niche Research</button>
     <button data-tab="discover">Discovery</button>
     <button data-tab="trends">Trend Radar</button>
+    <button data-tab="teardown">Teardown</button>
     <button data-tab="calc">Royalty Calculator</button>
   </nav>
 </header>
@@ -428,6 +439,17 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
       <button class="btn primary" type="submit">Scan trends</button>
     </form>
   </div>
+  <div id="pane-teardown" hidden>
+    <h2>Reverse-ASIN teardown</h2>
+    <p class="small">Paste ASINs or Amazon links — one per line, or comma separated.
+      Each becomes a row: how the book is positioned, and how contested its shelf is.</p>
+    <form id="teardownForm">
+      <label>ASINs or Amazon links <span class="small">(up to 20)</span></label>
+      <textarea name="identifiers" rows="7" required
+        placeholder="B08JCQKGXZ&#10;https://www.amazon.com/dp/B0CTFW6JLD&#10;B0FFNQ7W9J"></textarea>
+      <button class="btn primary" type="submit">Tear down</button>
+    </form>
+  </div>
   <div id="pane-calc" hidden>
     <h2>Royalty calculator</h2>
     <form id="calcForm">
@@ -475,7 +497,7 @@ const md = t => esc(t).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/^### (.+)$
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   tab = b.dataset.tab;
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x===b));
-  ["research","discover","trends","calc"].forEach(p => $("#pane-"+p).hidden = p!==tab);
+  ["research","discover","trends","teardown","calc"].forEach(p => $("#pane-"+p).hidden = p!==tab);
   if (tab==="calc") { $("#main").innerHTML = '<div class="empty">Fill the calculator to see break-even math.</div>'; loadFeasJobs(); }
 });
 
@@ -509,7 +531,7 @@ async function openJob(id){
   activeJob = id; clearInterval(pollTimer);
   const tick = async () => {
     const [job] = await Promise.all([api("/research/"+id), refreshJobs()]);
-    ({trends:renderTrends, discovery:renderDiscovery}[job.kind] || renderResearch)(job);
+    ({trends:renderTrends, discovery:renderDiscovery, teardown:renderTeardown}[job.kind] || renderResearch)(job);
     if (["done","partial","failed"].includes(job.status)) clearInterval(pollTimer);
   };
   await tick(); pollTimer = setInterval(tick, 2500);
@@ -709,6 +731,56 @@ const CATS = [["health","Health"],["self_help","Self-help"],["cooking","Cooking"
               ["finance","Finance"],["kids","Kids & parenting"],["career","Career"]];
 $("#catGrid").innerHTML = CATS.map(([v,l]) =>
   `<label class="cat"><input type="checkbox" name="cat" value="${v}"> ${l}</label>`).join("");
+
+$("#teardownForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const body = { identifiers: new FormData(e.target).get("identifiers") };
+  try { const {job_id} = await api("/teardown",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); openJob(job_id); }
+  catch(err){ alert(err.message); }
+});
+
+/* ---------- teardown view ---------- */
+function renderTeardown(job){
+  if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Teardown failed.</b> ${esc(job.message)}</div>`;
+  if (!job.result) return $("#main").innerHTML = progressView(job);
+  const r = job.result, rows = r.rows || [];
+  const cell = v => v == null || v === "" ? '<span class="na">—</span>' : esc(String(v));
+  $("#main").innerHTML = `
+    <div class="pagehead"><h2>Reverse-ASIN teardown <span class="small">· ${rows.length} book(s) · ${esc(r.generated_at)}</span></h2></div>
+    ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+    ${rows.map(b => {
+      const c = b.crowdedness || {}, tag = (c.verdict||"VERIFY").split(" ")[0];
+      return `<div class="oppcard">
+        <div class="opphead">
+          <div>
+            <div class="oppname">${cell(b.title)}</div>
+            <div class="small">${cell(b.subtitle)}</div>
+            <div class="small">${cell(b.author)}${b.credential?` · <b>${esc(b.credential)}</b>`:""}</div>
+          </div>
+          <span class="q q-${esc(tag)}">${esc(tag)}</span>
+        </div>
+        ${b.error?`<div class="warn">${esc(b.error)}</div>`:""}
+        <div class="oppstats">
+          <div><span class="l">BSR (Kindle)</span><b class="mono">${b.bsr?fmt(b.bsr):"—"}</b></div>
+          <div><span class="l">Reviews</span><b class="mono">${b.reviews!=null?fmt(b.reviews):"—"}</b></div>
+          <div><span class="l">Rating</span><b class="mono">${b.rating!=null?b.rating+"★":"—"}</b></div>
+          <div><span class="l">Pages</span><b class="mono">${b.pages!=null?fmt(b.pages):"—"}</b></div>
+          <div><span class="l">Year</span><b class="mono">${cell(b.year)}</b></div>
+          <div><span class="l">Competing books</span><b class="mono">${c.competing_books!=null?fmt(c.competing_books):"—"}</b></div>
+        </div>
+        <table class="teardown"><tbody>
+          <tr><th>Sub-niche</th><td>${cell(b.sub_niche)}</td></tr>
+          <tr><th>Positioning</th><td>${cell(b.positioning)}</td></tr>
+          <tr><th>Crowdedness</th><td>${cell(c.verdict)}${c.phrase?` <span class="small">— judged on “${esc(c.phrase)}”</span>`:""}</td></tr>
+          <tr><th>BSR status</th><td class="small">${cell(b.bsr_status)}</td></tr>
+          <tr><th>Formats</th><td>${(b.formats||[]).map(f=>`<span class="tagchip">${esc(f)}</span>`).join("") || cell(null)}</td></tr>
+          <tr><th>Kindle ASIN</th><td class="mono">${cell(b.asin)}</td></tr>
+          <tr><th>Paperback ISBN</th><td class="mono">${cell(b.paperback_isbn)}</td></tr>
+          <tr><th>Source</th><td><a href="${esc(b.source_url)}" target="_blank" rel="noopener">${esc(b.source_url)}</a></td></tr>
+        </tbody></table>
+      </div>`;
+    }).join("")}`;
+}
 
 $("#discoverForm").addEventListener("submit", async e => {
   e.preventDefault();
