@@ -20,12 +20,33 @@ import statistics
 import urllib.request
 from typing import Any, Optional
 
-import royalty
+try:  # pragma: no cover - import-shape shim (see server/trends.py)
+    from . import royalty
+except ImportError:  # pragma: no cover
+    import royalty
 
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+
+
+def active_provider() -> Optional[dict[str, str]]:
+    """Which LLM to use, read at call time rather than at import.
+
+    These used to be module constants captured when `brief` was first
+    imported. Since `app.py` imports it during startup, a key added to
+    `.env` afterwards was invisible and the brief reported "narrative off"
+    with no clue why. Reading the environment per call also lets an operator
+    rotate a key without a restart.
+    """
+    gemini = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini:
+        return {"name": "gemini", "key": gemini,
+                "model": os.environ.get("GEMINI_MODEL", "").strip() or DEFAULT_GEMINI_MODEL}
+    anthropic = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if anthropic:
+        return {"name": "anthropic", "key": anthropic,
+                "model": os.environ.get("ANTHROPIC_MODEL", "").strip() or DEFAULT_ANTHROPIC_MODEL}
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -147,36 +168,66 @@ DATA:
 """
 
 
-def _call_gemini(digest: str) -> str:
-    req = urllib.request.Request(
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent",
-        data=json.dumps({
-            "contents": [{"parts": [{"text": _PROMPT + digest}]}],
-            # Gemini 2.5+/3.x spend output budget on internal reasoning first,
-            # so the cap must leave room for both thinking and the answer
-            "generationConfig": {"temperature": 0.2, "maxOutputTokens": 3000},
-        }).encode(),
-        headers={"Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY},
-    )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        data = json.loads(resp.read())
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+def _post_prompt(prompt: str, provider: dict[str, str],
+                 max_output_tokens: int = 3000) -> str:
+    """Send exactly `prompt` to the configured provider. No prompt of its own.
 
+    Kept separate from the Niche Brief prompt so other features (Discovery
+    concept extraction) can use the same key without inheriting the brief's
+    "write an analyst narrative" instruction — which is what happened, and
+    produced prose where JSON was required.
+    """
+    if provider["name"] == "gemini":
+        req = urllib.request.Request(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{provider['model']}:generateContent",
+            data=json.dumps({
+                "contents": [{"parts": [{"text": prompt}]}],
+                # Gemini 2.5+/3.x spend output budget on internal reasoning
+                # first, so the cap must leave room for thinking and answer.
+                "generationConfig": {"temperature": 0.2,
+                                     "maxOutputTokens": max_output_tokens},
+            }).encode(),
+            headers={"Content-Type": "application/json", "x-goog-api-key": provider["key"]},
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            data = json.loads(resp.read())
+        return data["candidates"][0]["content"]["parts"][0]["text"]
 
-def _call_anthropic(digest: str) -> str:
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages",
         data=json.dumps({
-            "model": ANTHROPIC_MODEL,
-            "max_tokens": 700,
-            "messages": [{"role": "user", "content": _PROMPT + digest}],
+            "model": provider["model"],
+            "max_tokens": max_output_tokens,
+            "messages": [{"role": "user", "content": prompt}],
         }).encode(),
-        headers={"Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY,
+        headers={"Content-Type": "application/json", "x-api-key": provider["key"],
                  "anthropic-version": "2023-06-01"},
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=90) as resp:
         data = json.loads(resp.read())
     return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+def call_llm(prompt: str, max_output_tokens: int = 3000) -> Optional[str]:
+    """Generic access to whichever model is configured. None when none is.
+
+    `max_output_tokens` matters more than it looks: Gemini 2.5+ spends this
+    budget on internal reasoning before emitting the answer, so a structured
+    task with a long prompt needs a larger cap or the reply arrives truncated
+    mid-JSON.
+    """
+    provider = active_provider()
+    if provider is None:
+        return None
+    return _post_prompt(prompt, provider, max_output_tokens=max_output_tokens)
+
+
+def _call_gemini(digest: str) -> str:
+    return _post_prompt(_PROMPT + digest, active_provider())
+
+
+def _call_anthropic(digest: str) -> str:
+    return _post_prompt(_PROMPT + digest, active_provider())
 
 
 def enhance_with_llm(brief: dict[str, Any]) -> dict[str, Any]:
@@ -185,15 +236,16 @@ def enhance_with_llm(brief: dict[str, Any]) -> dict[str, Any]:
                          ("seed", "focus_keyword", "verdict", "gates", "breakeven",
                           "ku_read", "evidence", "differentiation", "warnings")},
                         default=str)
+    provider = active_provider()
     try:
-        if GEMINI_KEY:
-            brief["narrative"] = _call_gemini(digest)
-            brief["narrative_source"] = f"gemini:{GEMINI_MODEL}"
-        elif ANTHROPIC_KEY:
-            brief["narrative"] = _call_anthropic(digest)
-            brief["narrative_source"] = f"anthropic:{ANTHROPIC_MODEL}"
-        else:
+        if provider is None:
             brief["narrative_source"] = "none — set GEMINI_API_KEY or ANTHROPIC_API_KEY to enable"
+        elif provider["name"] == "gemini":
+            brief["narrative"] = _call_gemini(digest)
+            brief["narrative_source"] = f"gemini:{provider['model']}"
+        else:
+            brief["narrative"] = _call_anthropic(digest)
+            brief["narrative_source"] = f"anthropic:{provider['model']}"
     except Exception as exc:
         brief["narrative_source"] = f"llm call failed: {type(exc).__name__}: {exc}"
     return brief

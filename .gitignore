@@ -7,3 +7,9 @@ venv/
 /kdp_*.json
 /kdp_dashboard_*.html
 proxies.txt
+
+# runtime job database created by the web app
+/data/
+
+# local secrets - never commit
+.env
