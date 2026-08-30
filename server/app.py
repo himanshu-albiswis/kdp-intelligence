@@ -3,9 +3,11 @@
 Run from the repo root:
     uvicorn app:app --app-dir server --host 0.0.0.0 --port 8000
 
-Environment:
-    KDP_API_KEY   optional — when set, POST/DELETE require header  X-API-Key: <value>
-    KDP_DB        optional — sqlite path (default: data/jobs.db under repo root)
+Environment (a git-ignored .env in the repo root is loaded automatically):
+    KDP_API_KEY       optional — when set, POST/DELETE require header X-API-Key: <value>
+    KDP_DB            optional — sqlite path (default: data/jobs.db under repo root)
+    GEMINI_API_KEY    optional — enables the Niche Brief analyst narrative
+    ANTHROPIC_API_KEY optional — alternative narrative provider
 """
 
 import json
@@ -22,17 +24,33 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+# Load .env before anything reads configuration. Secrets live there, never in
+# a tracked file; see .gitignore.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+except ImportError:  # pragma: no cover - dotenv ships with uvicorn[standard]
+    pass
+
 import brief as brief_mod
 import pipeline
+from discovery import pipeline as discovery_pipeline
+from discovery.store import DiscoveryStore
 import royalty as royalty_mod
 import trends as trends_mod
 
 SERVER_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SERVER_DIR)
 DB_PATH = os.environ.get("KDP_DB", os.path.join(REPO_ROOT, "data", "jobs.db"))
+DISCOVERY_DB = os.environ.get("KDP_DISCOVERY_DB",
+                              os.path.join(os.path.dirname(DB_PATH), "discovery.db"))
 API_KEY = os.environ.get("KDP_API_KEY", "")
 
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+# Discovery history accumulates from the first scan so momentum becomes
+# computable later; see server/discovery/store.py.
+DISCOVERY_STORE = DiscoveryStore(DISCOVERY_DB)
 _db_lock = threading.Lock()
 # One research at a time: polite to Amazon, and spiders are process-heavy anyway
 _executor = ThreadPoolExecutor(max_workers=1)
@@ -95,13 +113,15 @@ def _worker(job_id: str, params: dict[str, Any], kind: str = "research") -> None
         _update(job_id, stage=stage, pct=pct, message=message)
 
     try:
-        if kind == "trends":
+        if kind == "discovery":
+            bundle = discovery_pipeline.run_discovery(params, progress, store=DISCOVERY_STORE)
+        elif kind == "trends":
             bundle = trends_mod.run_trend_radar(params, progress)
         else:
             bundle = pipeline.run_research(params, progress)
-        status = "partial" if bundle.get("warnings") and not bundle.get("books") else "done"
-        if bundle.get("warnings") and bundle.get("books"):
-            status = "done"  # warnings but usable data
+        # "partial" means warnings with nothing usable behind them.
+        payload = bundle.get("books") or bundle.get("cards") or bundle.get("validated")
+        status = "partial" if bundle.get("warnings") and not payload else "done"
         _update(job_id, status=status, pct=100, stage="done",
                 message="; ".join(bundle.get("warnings", [])) or "Complete",
                 result=json.dumps(bundle, default=str))
@@ -118,7 +138,9 @@ class ResearchRequest(BaseModel):
     deep_dive: int = Field(default=8, ge=0, le=30)
     complaint_books: int = Field(default=3, ge=0, le=10)
     focus: Optional[str] = None
-    impersonate: str = "chrome"
+    # edge, not chrome: chrome + stealth headers gets a 503 decoy from Amazon
+    # in every measured trial. See server/transport.py.
+    impersonate: str = "edge"
     plain_headers: bool = False
     proxy: Optional[str] = None
     proxies: Optional[list[str]] = None
@@ -156,6 +178,13 @@ def _enqueue(params: dict[str, Any], kind: str) -> dict[str, str]:
     return {"job_id": job_id}
 
 
+class DiscoverRequest(BaseModel):
+    """No seed keyword — that is the point of Discovery."""
+    window: str = Field(default="7d", pattern="^(24h|7d|30d)$")
+    categories: Optional[list[str]] = None
+    validate_top: int = Field(default=8, ge=1, le=20)
+
+
 class TrendRequest(BaseModel):
     seed: str = Field(min_length=2, max_length=120)
     marketplace: str = "us"
@@ -165,6 +194,23 @@ class TrendRequest(BaseModel):
     plain_headers: bool = False
     proxy: Optional[str] = None
     proxies: Optional[list[str]] = None
+
+
+@app.post("/api/discover")
+def create_discovery(req: DiscoverRequest, x_api_key: Optional[str] = Header(default=None)) -> dict[str, str]:
+    _check_key(x_api_key)
+    return _enqueue({**req.model_dump(), "seed": f"discovery · last {req.window}"}, "discovery")
+
+
+@app.get("/api/discover/momentum/{concept}")
+def concept_momentum(concept: str) -> dict[str, Any]:
+    """Trajectory of one concept across scans; honest when history is thin."""
+    return DISCOVERY_STORE.momentum(concept)
+
+
+@app.get("/api/discover/movers")
+def discovery_movers(limit: int = 5) -> list[dict[str, Any]]:
+    return DISCOVERY_STORE.top_movers(limit)
 
 
 @app.post("/api/trends")
