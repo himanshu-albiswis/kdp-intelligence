@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KDP Niche Intelligence</title>
+<style>
+:root{
+  --paper:#FAF8F4; --ink:#201D24; --muted:#6A6472; --line:#E5E0D8; --card:#FFFFFF;
+  --accent:#8C2F39; --gold:#9A7422; --money:#2F7D5D; --bad:#A33C2E;
+  --chip-run:#E8EEF7; --chip-run-fg:#2B4C7E; --chip-done:#E7F1EC; --chip-done-fg:#1F5C44;
+  --chip-fail:#F7E7E4; --chip-fail-fg:#8C2F39; --hover:#F2EEE7;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#191720; --ink:#EAE6E0; --muted:#9A93A5; --line:#332F3B; --card:#211E29;
+    --accent:#D0737E; --gold:#D2A94E; --money:#5CB893; --bad:#E08A7A;
+    --chip-run:#22304A; --chip-run-fg:#9DBCEB; --chip-done:#1E3A2E; --chip-done-fg:#8FD4B4;
+    --chip-fail:#40232A; --chip-fail-fg:#E8A0A8; --hover:#2A2634;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:baseline;gap:14px;padding:18px 24px;border-bottom:2px solid var(--ink)}
+header h1{font-family:Georgia,serif;font-size:20px;margin:0}
+header .tag{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.layout{display:grid;grid-template-columns:330px 1fr;min-height:calc(100vh - 62px)}
+aside{border-right:1px solid var(--line);padding:18px;overflow-y:auto}
+main{padding:22px 26px;overflow-y:auto}
+h2{font-family:Georgia,serif;font-size:17px;margin:0 0 12px}
+h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:26px 0 8px}
+label{display:block;font-size:12px;font-weight:600;margin:10px 0 3px}
+input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{cursor:pointer;font:inherit;font-weight:700;border:none;border-radius:7px;padding:9px 14px}
+.primary{background:var(--accent);color:#fff;width:100%;margin-top:14px}
+.primary:disabled{opacity:.5;cursor:default}
+.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent);width:100%;margin-top:8px}
+.job{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.job:hover{background:var(--hover)}
+.job.active{border-color:var(--accent);border-width:1.5px}
+.job .t{font-weight:700;font-size:13.5px}
+.job .m{font-size:11.5px;color:var(--muted);margin-top:2px}
+.chip{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:12px;padding:2px 8px}
+.st-running,.st-queued{background:var(--chip-run);color:var(--chip-run-fg)}
+.st-done{background:var(--chip-done);color:var(--chip-done-fg)}
+.st-partial{background:var(--chip-fail);color:var(--chip-fail-fg)}
+.st-failed{background:var(--chip-fail);color:var(--chip-fail-fg)}
+.bar{height:5px;background:var(--line);border-radius:3px;margin-top:7px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0 8px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:11px 13px}
+.kpi .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:11px;color:var(--muted);margin-top:2px}
+.tablewrap{overflow-x:auto;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--card);min-width:640px}
+th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;text-align:left;color:var(--muted);border-bottom:2px solid var(--ink);padding:7px 10px;cursor:pointer;white-space:nowrap}
+td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
+td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td a{color:var(--accent);text-decoration:none}
+.scorebar{display:inline-block;width:52px;height:5px;background:var(--line);border-radius:3px;margin-left:6px;vertical-align:middle}
+.scorebar i{display:block;height:100%;border-radius:3px;background:var(--money)}
+.warn{background:var(--chip-fail);color:var(--chip-fail-fg);border-radius:8px;padding:10px 14px;font-size:13px;margin:12px 0}
+.tagchip{display:inline-block;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:3px 10px;margin:3px;font-size:12px}
+.complaint{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--bad);border-radius:8px;padding:9px 12px;margin-bottom:7px;font-size:12.5px}
+.complaint .h{color:var(--bad);font-weight:700;margin-bottom:3px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:9px}
+.book{display:flex;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:8px;text-decoration:none;color:inherit}
+.book:hover{border-color:var(--accent)}
+.book img{width:50px;height:74px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--line)}
+.book .t{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:3px}
+.book .m{font-size:11px;color:var(--muted)}
+.ku{background:#ff9900;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px}
+.empty{color:var(--muted);text-align:center;padding:70px 20px;font-size:14px}
+.small{font-size:11.5px;color:var(--muted)}
+@media (max-width:860px){.layout{grid-template-columns:1fr}aside{border-right:none;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header><h1>📚 KDP Niche Intelligence</h1><span class="tag">research → royalties</span></header>
+<div class="layout">
+<aside>
+  <h2>New research</h2>
+  <form id="form">
+    <label>Seed keyword</label>
+    <input name="seed" placeholder='e.g. "kidney disease food list"' required minlength="2">
+    <div class="row2">
+      <div><label>Marketplace</label>
+        <select name="marketplace">
+          <option value="us" selected>US</option><option value="uk">UK</option><option value="ca">CA</option>
+          <option value="au">AU</option><option value="de">DE</option><option value="fr">FR</option>
+          <option value="it">IT</option><option value="es">ES</option><option value="jp">JP</option>
+          <option value="in">IN</option><option value="nl">NL</option><option value="se">SE</option>
+          <option value="br">BR</option><option value="mx">MX</option>
+        </select></div>
+      <div><label>Store</label>
+        <select name="store"><option value="kindle" selected>Kindle</option><option value="books">Print books</option></select></div>
+    </div>
+    <div class="row2">
+      <div><label>Keywords</label><input name="max_keywords" type="number" value="10" min="1" max="40"></div>
+      <div><label>Books to scan</label><input name="books" type="number" value="30" min="5" max="200"></div>
+    </div>
+    <div class="row2">
+      <div><label>Deep-dive books</label><input name="deep_dive" type="number" value="8" min="0" max="30"></div>
+      <div><label>Fingerprint</label>
+        <select name="impersonate"><option selected>chrome</option><option>edge</option><option>safari</option><option>firefox</option></select></div>
+    </div>
+    <label>Rotating proxies <span class="small">(optional, comma-separated)</span></label>
+    <input name="proxies" placeholder="http://user:pass@ip1:8080, http://…">
+    <button class="primary" type="submit">Run research</button>
+    <button class="ghost" type="button" id="demoBtn">Load demo dataset</button>
+  </form>
+  <h3>Research jobs</h3>
+  <div id="jobs"></div>
+</aside>
+<main id="main"><div class="empty">Run a research job — or load the demo dataset — to see the dashboard.</div></main>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+let activeJob = null, pollTimer = null, sortKey = "opportunity", sortDir = -1;
+
+const api = async (path, opts) => {
+  const r = await fetch("/api" + path, opts);
+  if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+  return r.json();
+};
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null ? "?" : Number(n).toLocaleString("en-US");
+
+async function refreshJobs(){
+  const jobs = await api("/research");
+  $("#jobs").innerHTML = jobs.length ? jobs.map(j => `
+    <div class="job ${j.id===activeJob?"active":""}" onclick="openJob('${j.id}')">
+      <div class="t">${esc(j.seed)} ${j.demo?'<span class="small">(demo)</span>':""}</div>
+      <div class="m">${j.marketplace.toUpperCase()} · ${j.store} · ${esc(j.created_at.slice(0,16).replace("T"," "))}</div>
+      <div class="m"><span class="chip st-${j.status}">${j.status}</span> ${j.status==="running"?esc(j.stage):""}</div>
+      ${["running","queued"].includes(j.status)?`<div class="bar"><i style="width:${j.pct}%"></i></div>`:""}
+    </div>`).join("") : '<div class="small">No jobs yet.</div>';
+  return jobs;
+}
+
+async function openJob(id){
+  activeJob = id;
+  clearInterval(pollTimer);
+  const tick = async () => {
+    const [job] = await Promise.all([api("/research/"+id), refreshJobs()]);
+    render(job);
+    if (["done","partial","failed"].includes(job.status)) clearInterval(pollTimer);
+  };
+  await tick();
+  pollTimer = setInterval(tick, 2500);
+}
+
+function render(job){
+  if (job.status === "failed")
+    return $("#main").innerHTML = `<div class="warn"><b>Job failed.</b> ${esc(job.message)}</div>`;
+  if (!job.result)
+    return $("#main").innerHTML = `<div class="empty"><b>${esc(job.seed)}</b> — ${esc(job.stage||"queued")}…<br>
+      <div class="bar" style="max-width:340px;margin:16px auto"><i style="width:${job.pct}%"></i></div>
+      <span class="small">${esc(job.message)}</span></div>`;
+
+  const r = job.result, s = r.summary, cur = r.currency || "$";
+  const kws = [...r.keywords].sort((a,b) => (a[sortKey]??-1) < (b[sortKey]??-1) ? sortDir : -sortDir);
+  const money = r.book_intel.filter(b => b.est_monthly_royalty).sort((a,b) => b.est_monthly_royalty - a.est_monthly_royalty);
+
+  $("#main").innerHTML = `
+    <h2>“${esc(r.seed)}” <span class="small">· Amazon ${r.marketplace.toUpperCase()} · ${r.store} · focus: “${esc(r.focus_keyword)}” · ${esc(r.generated_at)}</span></h2>
+    ${(r.warnings||[]).map(w => `<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+    <div class="kpis">
+      <div class="kpi"><div class="v">${s.total_results!=null?"~"+fmt(s.total_results):"?"}</div><div class="l">competing books</div></div>
+      <div class="kpi"><div class="v">${cur}${fmt(Math.round(s.royalty_pool_month||0))}/mo</div><div class="l">est. royalty pool (deep-dived)</div></div>
+      <div class="kpi"><div class="v">${fmt(s.median_reviews)}</div><div class="l">median reviews</div></div>
+      <div class="kpi"><div class="v">${s.ku_share_pct!=null?s.ku_share_pct+"%":"?"}</div><div class="l">Kindle Unlimited</div></div>
+      <div class="kpi"><div class="v">${s.avg_buy_price!=null?cur+s.avg_buy_price:"—"}</div><div class="l">avg buy price</div></div>
+      <div class="kpi"><div class="v">${s.velocity_pct_90d!=null?s.velocity_pct_90d+"%":"?"}</div><div class="l">top sellers &lt;90 days old</div></div>
+    </div>
+
+    <h3>Keyword opportunities · click headers to sort</h3>
+    <div class="tablewrap"><table>
+      <tr>${[["keyword","Keyword"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100 rev"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
+        .map(([k,l]) => `<th onclick="setSort('${k}')">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</th>`).join("")}</tr>
+      ${kws.map(k => `<tr>
+        <td><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.keyword)}</a></td>
+        <td class="num">${fmt(k.total_results)}</td><td class="num">${Math.round(k.median_reviews)}</td>
+        <td class="num">${Math.round(k.pct_under_100)}%</td><td class="num">${Math.round(k.ku_share)}%</td>
+        <td class="num">${k.phrase_in_titles}</td>
+        <td class="num"><b>${k.opportunity}</b><span class="scorebar"><i style="width:${k.opportunity}%"></i></span></td>
+        <td>${esc(k.verdict)}</td></tr>`).join("")}
+    </table></div>
+
+    ${money.length ? `<h3>Money proof · BSR → estimated royalties</h3>
+    <div class="tablewrap"><table>
+      <tr><th>Book</th><th>BSR</th><th>Category rank</th><th>Price</th><th>Est. sales/day</th><th>Est. royalty/mo</th><th>Published</th></tr>
+      ${money.map(b => `<tr>
+        <td><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.title.slice(0,64))}</a></td>
+        <td class="num">${fmt(b.bsr)}</td><td class="small">${esc(b.category_rank||"—")}</td>
+        <td class="num">${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
+        <td class="num">${b.est_sales_per_day??"—"}</td>
+        <td class="num"><b>${cur}${fmt(Math.round(b.est_monthly_royalty))}</b></td>
+        <td class="num">${esc(b.publication_date||"?")}</td></tr>`).join("")}
+    </table></div>` : ""}
+
+    ${(r.title_gaps||[]).length ? `<h3>Title gaps · searched phrases few titles use</h3>
+      <div>${r.title_gaps.map(g => `<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>` : ""}
+
+    ${(r.title_ngrams||[]).length ? `<h3>What page-1 titles are made of</h3>
+      <div>${r.title_ngrams.map(([g,c]) => `<span class="tagchip">${esc(g)} ×${c}</span>`).join("")}</div>` : ""}
+
+    ${(r.complaints||[]).length ? `<h3>What buyers complain about (1–3★)</h3>
+      ${r.complaints.slice(0,10).map(c => `<div class="complaint">
+        <div class="h">${"★".repeat(Math.round(c.rating))} ${esc(c.title||"(no title)")} <span class="small">— on “${esc(c.book_title)}”</span></div>
+        ${esc(c.body)}</div>`).join("")}` : ""}
+
+    ${(r.books||[]).length ? `<h3>Books in the niche (${r.books.length})</h3>
+      <div class="grid">${r.books.slice(0,40).map(b => `
+        <a class="book" href="${esc(b.url)}" target="_blank" rel="noopener">
+          ${b.image_url?`<img loading="lazy" src="${esc(b.image_url)}" alt="">`:'<div style="width:50px;height:74px"></div>'}
+          <div><div class="t">${esc(b.title.slice(0,72))}</div>
+          <div class="m">${b.kindle_unlimited?'<span class="ku">KU</span> ':''}${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU only":"—")} · ${b.rating??"—"}★ · ${fmt(b.reviews)} reviews</div></div>
+        </a>`).join("")}</div>` : ""}`;
+}
+
+window.setSort = k => { sortDir = (sortKey === k) ? -sortDir : -1; sortKey = k; if (activeJob) openJob(activeJob); };
+window.openJob = openJob;
+
+$("#form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = new FormData(e.target), body = Object.fromEntries(f.entries());
+  ["max_keywords","books","deep_dive"].forEach(k => body[k] = +body[k]);
+  body.proxies = body.proxies ? body.proxies.split(",").map(s => s.trim()).filter(Boolean) : null;
+  const btn = e.target.querySelector(".primary"); btn.disabled = true;
+  try { const {job_id} = await api("/research", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}); openJob(job_id); }
+  catch (err) { alert(err.message); }
+  finally { btn.disabled = false; }
+});
+$("#demoBtn").addEventListener("click", async () => {
+  const {job_id} = await api("/research", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({seed:"air fryer", demo:true})});
+  openJob(job_id);
+});
+refreshJobs(); setInterval(refreshJobs, 5000);
+</script>
+</body>
+</html>

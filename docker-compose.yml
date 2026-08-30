@@ -1,0 +1,15 @@
+services:
+  kdp:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Uncomment to require an API key on job creation/deletion:
+      # KDP_API_KEY: change-me
+      KDP_DB: /app/data/jobs.db
+    volumes:
+      - kdp-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  kdp-data:
