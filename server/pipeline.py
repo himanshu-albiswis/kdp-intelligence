@@ -25,6 +25,13 @@ from kdp_intel_dashboard import (  # noqa: E402
     title_ngrams,
 )
 from scrapling.fetchers import ProxyRotator  # noqa: E402
+import kdp_estimates  # noqa: E402
+import kdp_adaptive  # noqa: E402
+
+try:  # pragma: no cover - import-shape shim (see server/trends.py)
+    from . import transport
+except ImportError:  # pragma: no cover
+    import transport
 
 SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_data.json")
 
@@ -43,14 +50,18 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
     max_books: int = int(params.get("books", 30))
     deep_dive_n: int = int(params.get("deep_dive", 8))
     complaint_n: int = int(params.get("complaint_books", 3))
-    impersonate: str = params.get("impersonate", "chrome")
-    stealthy_headers: bool = not params.get("plain_headers", False)
+    # Measured defaults; see server/transport.py for the A/B that chose them.
+    impersonate, stealthy_headers, transport_notes = transport.resolve(params)
     proxy: Optional[str] = params.get("proxy") or None
     proxies: Optional[list[str]] = params.get("proxies") or None
 
+    # Fingerprints accumulate in data/adaptive.db while selectors work,
+    # ready for the day Amazon redesigns.
+    kdp_adaptive.configure()
+
     store = STORES[store_key]
     domain, currency, _mid = MARKETPLACES[marketplace]
-    warnings: list[str] = []
+    warnings: list[str] = list(transport_notes)
 
     common = dict(
         marketplace=marketplace,
@@ -68,7 +79,9 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
 
     # 1 — long-tail mining + validation
     progress("keywords", 5, f'Mining Amazon autocomplete for "{seed}"')
-    candidates = mine_suggestions(seed, marketplace, impersonate, max_keywords)
+    candidates, broaden_note = mine_suggestions(seed, marketplace, impersonate, max_keywords)
+    if broaden_note:
+        warnings.append(broaden_note)
     progress("keywords", 12, f"{len(candidates)} long-tail candidates found; validating against live results")
     lt_spider = LongTailSpider(candidates=candidates or {seed: 0}, store=store, **common)
     lt_spider.start()
@@ -86,9 +99,26 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
     niche_spider = KDPNicheSpider(keyword=focus, store=store, max_books=max_books, **common)
     niche_spider.start()
     books = niche_spider.valid_books
+
+    # Amazon localises prices by IP: amazon.com serves INR to an Indian visitor.
+    # Scoring those as dollars produced avg_buy_price ~$1,594 and nonsense
+    # royalties, so verify what was actually rendered before trusting money.
+    served = kdp_estimates.observed_currency(getattr(niche_spider, "price_texts", []))
+    currency_ok = kdp_estimates.currency_matches(currency, served)
+    if not currency_ok:
+        warnings.append(
+            f"Amazon served prices in {served}, but the {marketplace.upper()} "
+            f"marketplace bills in {currency}. Your IP is being localised, so "
+            f"prices and every figure derived from them are suppressed. Use a "
+            f"proxy in the target country, or select the marketplace that "
+            f"matches your location."
+        )
+
+    if getattr(niche_spider, "selector_drift", None):
+        warnings.append(niche_spider.selector_drift)
+
     if not books:
-        warnings.append("Niche scan returned no books — Amazon likely blocked this IP. "
-                        "Configure a residential proxy and re-run.")
+        warnings.append(transport.block_advice(impersonate, stealthy_headers))
 
     # 3 — product-page deep dive
     deep_targets = sorted(books, key=lambda b: -b.reviews)[:deep_dive_n]
@@ -124,15 +154,28 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
         "currency": currency,
         "focus_keyword": focus,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "served_currency": served,
+        "currency_ok": currency_ok,
         "summary": {
             "total_results": focus_metrics.total_results if focus_metrics else None,
             "books_scanned": len(books),
             "ku_share_pct": round(sum(1 for b in books if b.kindle_unlimited) / len(books) * 100) if books else None,
-            "avg_buy_price": round(sum(priced) / len(priced), 2) if priced else None,
+            "avg_buy_price": (round(sum(priced) / len(priced), 2)
+                              if priced and currency_ok else None),
             "median_reviews": statistics.median([b.reviews for b in books]) if books else None,
             "royalty_pool_month": round(sum(b.est_monthly_royalty or 0 for b in intel), 2),
             "velocity_pct_90d": velocity["pct_90d"],
         },
+        # Income as a band including KU page reads. The flat
+        # `royalty_pool_month` above is kept for backwards compatibility but
+        # is paid-sales only and carries false precision; prefer this.
+        "income": kdp_estimates.niche_income(
+            [{"bsr": b.bsr, "price": b.price} for b in intel],
+            ku_share=(sum(1 for b in books if b.kindle_unlimited) / len(books)) if books else 0.0,
+            marketplace=marketplace,
+            store=store_key,
+            currency_ok=currency_ok,
+        ),
         "keywords": [m.model_dump() for m in keywords],
         "books": [b.model_dump() for b in books],
         "book_intel": [b.model_dump() for b in intel],
@@ -183,6 +226,11 @@ def _run_demo(progress: ProgressFn) -> dict[str, Any]:
             "royalty_pool_month": round(sum(b.get("est_monthly_royalty") or 0 for b in intel), 2),
             "velocity_pct_90d": raw.get("release_velocity", {}).get("pct_90d", 0),
         },
+        "income": kdp_estimates.niche_income(
+            [{"bsr": b.get("bsr"), "price": b.get("price")} for b in intel],
+            ku_share=(sum(1 for b in books if b.get("kindle_unlimited")) / len(books)) if books else 0.0,
+            marketplace=raw.get("marketplace", "us"),
+        ),
         "keywords": keywords,
         "books": books,
         "book_intel": intel,
