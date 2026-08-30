@@ -413,10 +413,10 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
   </div>
   <div id="pane-trends" hidden>
     <h2>Trend Radar</h2>
-    <p class="small">Reads Google + YouTube + Reddit for what people ask about the topic right now, then validates every candidate against live Amazon.</p>
+    <p class="small">Reads Google + YouTube + Reddit for what people are asking right now, then validates every candidate against live Amazon. Give it a topic to narrow the scan, or leave it blank to sweep every category.</p>
     <form id="trendForm">
-      <label>Topic</label>
-      <input name="seed" placeholder='e.g. "vagus nerve", "adhd"' required minlength="2">
+      <label>Topic <span class="small">(optional — leave blank to scan every category)</span></label>
+      <input name="seed" placeholder='e.g. "vagus nerve", "adhd" — or leave empty' minlength="2">
       <div class="row2">
         <div><label>Marketplace</label><select name="marketplace" class="mkts"></select></div>
         <div><label>Validate top</label><input name="validate_top" type="number" value="8" min="1" max="20"></div>
@@ -640,7 +640,7 @@ function renderTrends(job){
   if (!job.result) return $("#main").innerHTML = progressView(job);
   const r = job.result, src = r.sources || {};
   $("#main").innerHTML = `
-    <h2>📡 Trend Radar: “${esc(r.topic)}” <span class="small">· Amazon ${r.marketplace.toUpperCase()} cross-check · ${esc(r.generated_at)}</span></h2>
+    <h2>📡 Trend Radar: ${r.topic ? `“${esc(r.topic)}”` : "all categories"} <span class="small">· Amazon ${r.marketplace.toUpperCase()} cross-check · ${esc(r.generated_at)}</span></h2>
     ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
     <h3>Validated opportunities <span class="small">(demand breadth × live Amazon shelf)</span></h3>
     <div class="tablewrap"><table>
@@ -800,6 +800,8 @@ $("#trendForm").addEventListener("submit", async e => {
   const body = Object.fromEntries(new FormData(e.target).entries());
   body.validate_top = +body.validate_top;
   body.proxies = body.proxies ? body.proxies.split(",").map(s=>s.trim()).filter(Boolean) : null;
+  // an empty topic means "scan everything", not an empty string
+  if (!body.seed || !body.seed.trim()) delete body.seed;
   try { const {job_id} = await api("/trends",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); openJob(job_id); }
   catch(err){ alert(err.message); }
 });

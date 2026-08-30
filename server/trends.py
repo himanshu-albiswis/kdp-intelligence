@@ -44,25 +44,69 @@ ProgressFn = Callable[[str, int, str], None]
 
 # suffixes that expand a topic into how buyers phrase needs
 EXPANSIONS = ["", " book", " for", " how to", " workbook", " guide", " for beginners", " vs"]
-JUNK = re.compile(r"\b(pdf|free download|login|near me|reddit|youtube|amazon)\b", re.I)
+# Phrases that look learnable but are an account action, a booking, or a local
+# lookup — nobody publishes a book into these. They arrive mostly from Google
+# Trends' regional feed, which surfaced "how to delete instagram account" as a
+# GO opportunity in a live seedless scan.
+JUNK = re.compile(
+    r"\b(pdf|free download|login|log in|sign ?up|near me|reddit|youtube|amazon"
+    r"|delete .{0,20}account|book my|my ticket|customer care|helpline"
+    r"|price in|net banking|track order|status check|full movie|watch online)\b",
+    re.I)
 
 
 def _phrases(result) -> list[str]:
-    """Autocomplete sources yield phrases; Reddit yields post titles."""
-    if not result.usable:
+    """Autocomplete sources yield phrases; Reddit yields post titles.
+
+    A source can be absent entirely (never configured, or a partial harvest),
+    which is not the same as present-but-empty.
+    """
+    if result is None or not result.usable:
         return []
     return [i.get("phrase") or i.get("title") or "" for i in result.items]
 
 
-def _mine_candidates(topic: str, sources: dict) -> list[dict[str, Any]]:
-    """Merge sources into ranked candidate phrases with corroboration breadth."""
-    topic_words = set(topic.lower().split())
+def _looks_learnable(phrase: str) -> bool:
+    """Could a book plausibly teach this? Used only when there is no topic.
+
+    A trending term of one or two words is almost always a brand, a person or
+    an event — "bookmyshow", "formula 1", "djokovic". A phrase describing
+    something learnable is descriptive and therefore longer. Reddit-style
+    sentences short of that still pass on an explicit intent marker, which is
+    why both checks are here: the intent regex is tuned for sentences and
+    rejects perfectly good autocomplete phrases like "adhd for beginners".
+    """
+    if len(phrase.split()) >= 3:
+        return True
+    try:
+        from .discovery.concepts import has_book_intent
+    except (ImportError, ValueError):  # pragma: no cover - flat import shape
+        from discovery.concepts import has_book_intent  # type: ignore
+    return has_book_intent({"text": phrase, "source": "trends"})
+
+
+def _mine_candidates(topic: Optional[str], sources: dict) -> list[dict[str, Any]]:
+    """Merge sources into ranked candidate phrases with corroboration breadth.
+
+    With a topic, candidates must share a word with it. Without one — the
+    seedless mode Discovery already uses — everything harvested is kept and
+    only the junk filter applies.
+    """
+    topic_words = set((topic or "").lower().split())
     scores: dict[str, dict[str, Any]] = {}
 
     def add(phrase: str, source: str, weight: float) -> None:
         phrase = re.sub(r"\s+", " ", (phrase or "").lower().strip())
-        if (len(phrase) < 4 or len(phrase) > 80 or JUNK.search(phrase)
-                or not topic_words & set(phrase.split())):
+        if len(phrase) < 4 or len(phrase) > 80 or JUNK.search(phrase):
+            return
+        if topic_words:
+            # An explicit topic is the user asserting relevance; respect it.
+            if not topic_words & set(phrase.split()):
+                return
+        elif not _looks_learnable(phrase):
+            # Seedless, nothing else filters. Google Trends' daily feed is news
+            # ("bookmyshow", "formula 1"), and a live scan validated those
+            # against Amazon and called one a GO. Require book intent instead.
             return
         entry = scores.setdefault(phrase, {"phrase": phrase, "sources": set(), "weight": 0.0})
         entry["sources"].add(source)
@@ -101,8 +145,26 @@ def _quadrant(m: dict[str, Any]) -> str:
     return "AVOID — crowded for the demand shown"
 
 
+def _validate_against_amazon(to_validate: dict, store_key: str, marketplace: str,
+                             params: dict[str, Any]) -> tuple[dict, list]:
+    """Live Amazon cross-check. Split out so it can be stubbed in tests."""
+    spider = LongTailSpider(
+        candidates=to_validate,
+        store=STORES[store_key],
+        marketplace=marketplace,
+        impersonate=params.get("amazon_impersonate", params.get("impersonate", "edge")),
+        stealthy_headers=not params.get("plain_headers", False),
+        proxy=params.get("proxy") or None,
+        proxies=params.get("proxies") or None,
+    )
+    spider.start()
+    return {m.keyword: m.model_dump() for m in spider.results}, list(spider.failed_keywords)
+
+
 def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]:
-    topic: str = params["seed"].strip()
+    # No topic is a valid request: report what is trending everywhere.
+    topic: str = (params.get("seed") or "").strip()
+    scope = topic or "all categories"
     marketplace: str = params.get("marketplace", "us")
     store_key: str = params.get("store", "kindle")
     validate_top: int = int(params.get("validate_top", 8))
@@ -119,7 +181,7 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
     progress("mine", 50, "Merging sources into candidate phrases")
     candidates = _mine_candidates(topic, sources)
     if not candidates:
-        return {"topic": topic, "generated_at": datetime.now().isoformat(timespec="seconds"),
+        return {"topic": topic, "scope": scope, "generated_at": datetime.now().isoformat(timespec="seconds"),
                 "sources": {n: r.as_dict() for n, r in sources.items()},
                 "source_health": health,
                 "candidates": [], "validated": [],
@@ -127,20 +189,9 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
 
     to_validate = {c["phrase"]: i for i, c in enumerate(candidates[:validate_top])}
     progress("amazon", 60, f"Validating top {len(to_validate)} candidates against live Amazon {marketplace.upper()}")
-    spider = LongTailSpider(
-        candidates=to_validate,
-        store=STORES[store_key],
-        marketplace=marketplace,
-        impersonate=params.get("amazon_impersonate", impersonate),
-        stealthy_headers=not params.get("plain_headers", False),
-        proxy=params.get("proxy") or None,
-        proxies=params.get("proxies") or None,
-    )
-    spider.start()
-    validated_by_kw = {m.keyword: m.model_dump() for m in spider.results}
-    if spider.failed_keywords:
-        warnings.append(f"{len(spider.failed_keywords)} Amazon page(s) blocked, left as VERIFY: "
-                        + ", ".join(spider.failed_keywords))
+    validated_by_kw, failed = _validate_against_amazon(to_validate, store_key, marketplace, params)
+    if failed:
+        warnings.append(f"{len(failed)} Amazon page(s) blocked, left as VERIFY: " + ", ".join(failed))
 
     progress("assemble", 92, "Placing candidates in the opportunity quadrant")
     validated = []
@@ -156,6 +207,7 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
     progress("done", 100, "Trend radar complete")
     return {
         "topic": topic,
+        "scope": scope,
         "marketplace": marketplace,
         "store": store_key,
         "generated_at": datetime.now().isoformat(timespec="seconds"),

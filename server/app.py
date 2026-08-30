@@ -95,7 +95,8 @@ def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
         "id": row["id"],
         "kind": row["kind"] if "kind" in row.keys() else "research",
         "created_at": row["created_at"],
-        "seed": params.get("seed"),
+        # a seedless trend scan has no seed but still needs a list label
+        "seed": params.get("label") or params.get("seed"),
         "marketplace": params.get("marketplace", "us"),
         "store": params.get("store", "kindle"),
         "demo": bool(params.get("demo")),
@@ -167,6 +168,19 @@ def create_research(req: ResearchRequest, x_api_key: Optional[str] = Header(defa
     return _enqueue(req.model_dump(), "research")
 
 
+def _trend_params(req: "TrendRequest") -> dict[str, Any]:
+    """Split the display label from the topic.
+
+    The jobs list needs something to show for a seedless scan, but the label
+    must never become the topic: `_mine_candidates` requires every candidate
+    to share a word with the topic, so labelling the job "all categories"
+    would silently filter every result away.
+    """
+    params = req.model_dump()
+    params["label"] = (params.get("seed") or "").strip() or "all categories"
+    return params
+
+
 def _enqueue(params: dict[str, Any], kind: str) -> dict[str, str]:
     job_id = uuid.uuid4().hex[:12]
     with _db_lock, _db() as conn:
@@ -186,7 +200,9 @@ class DiscoverRequest(BaseModel):
 
 
 class TrendRequest(BaseModel):
-    seed: str = Field(min_length=2, max_length=120)
+    # Optional: with no topic, Trend Radar reports what is trending across the
+    # whole category panel, the same way Discovery harvests without a seed.
+    seed: Optional[str] = Field(default=None, min_length=2, max_length=120)
     marketplace: str = "us"
     store: str = "kindle"
     validate_top: int = Field(default=8, ge=1, le=20)
@@ -216,7 +232,7 @@ def discovery_movers(limit: int = 5) -> list[dict[str, Any]]:
 @app.post("/api/trends")
 def create_trends(req: TrendRequest, x_api_key: Optional[str] = Header(default=None)) -> dict[str, str]:
     _check_key(x_api_key)
-    return _enqueue(req.model_dump(), "trends")
+    return _enqueue(_trend_params(req), "trends")
 
 
 class RoyaltyRequest(BaseModel):
