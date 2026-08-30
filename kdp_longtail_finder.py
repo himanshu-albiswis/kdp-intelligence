@@ -31,11 +31,12 @@ Same ToS / proxy caveats as kdp_niche_validator.py.
 
 import argparse
 import logging
+import os
 import math
 import re
 import statistics
 import sys
-from typing import Optional
+from typing import Callable, Optional
 from urllib.parse import quote_plus
 
 import orjson
@@ -156,18 +157,43 @@ def verdict_for(m: KeywordMetrics) -> str:
     return "🔴 CROWDED"
 
 
-def mine_suggestions(seed: str, marketplace: str, impersonate: str, limit: int) -> dict[str, int]:
-    """Ask Amazon autocomplete for long-tail variants of the seed.
+# Fragments ending in one of these are not phrases anyone types, so they are
+# skipped when broadening a seed toward its head term.
+# Empty expansions to tolerate before declaring a term exhausted.
+DEAD_TERM_PROBES = 4
 
-    Returns {keyword: best_rank} where rank encodes expansion-order + position
-    (lower = surfaced earlier = stronger demand signal).
+_TRAILING_STOPWORDS = {"for", "with", "without", "and", "or", "the", "a", "an",
+                       "of", "to", "in", "on", "your", "my", "at", "by"}
+
+
+def head_terms(seed: str) -> list[str]:
+    """The seed, then progressively broader heads of it.
+
+    "adhd for beginners" -> ["adhd for beginners", "adhd"]
+
+    Amazon's autocomplete has nothing below an already-specific phrase, so a
+    seed like "adhd for beginners" mines zero candidates and the report ends
+    up with a single row. Broadening to the head term finds the long tail the
+    user was actually asking for.
     """
-    mid = MARKETPLACES[marketplace][2]
+    words = seed.split()
+    terms: list[str] = []
+    for end in range(len(words), 0, -1):
+        candidate = " ".join(words[:end])
+        if end < len(words) and words[end - 1].lower() in _TRAILING_STOPWORDS:
+            continue
+        terms.append(candidate)
+    return terms
+
+
+def _suggest_for(term: str, mid: str, impersonate: str, limit: int,
+                 fetch: Callable) -> dict[str, int]:
+    """Autocomplete candidates for one term, excluding the term itself."""
     found: dict[str, int] = {}
     for exp_index, expansion in enumerate(EXPANSIONS):
-        prefix = f"{seed} {expansion}".rstrip() + (" " if not expansion else "")
+        prefix = f"{term} {expansion}".rstrip() + (" " if not expansion else "")
         try:
-            page = Fetcher.get(
+            page = fetch(
                 "https://completion.amazon.com/api/2017/suggestions"
                 f"?mid={mid}&alias=digital-text&limit=11&prefix={quote_plus(prefix)}",
                 impersonate=impersonate,
@@ -178,15 +204,46 @@ def mine_suggestions(seed: str, marketplace: str, impersonate: str, limit: int) 
             continue
         for pos, s in enumerate(suggestions):
             value = (s.get("value") or "").strip().lower()
-            if not value or value == seed.lower() or seed.lower() not in value:
+            if not value or value == term.lower() or term.lower() not in value:
                 continue
             rank = exp_index * 10 + pos
             if value not in found or rank < found[value]:
                 found[value] = rank
         if len(found) >= limit * 3:  # plenty to choose from
             break
-    # keep the best-ranked candidates
-    return dict(sorted(found.items(), key=lambda kv: kv[1])[:limit])
+        # Amazon has nothing below an already-specific phrase. Proving that
+        # across all 30 expansions costs 30 delayed requests, which is what
+        # left jobs sitting at 5%. A few empty probes is enough evidence.
+        if exp_index + 1 >= DEAD_TERM_PROBES and not found:
+            break
+    return found
+
+
+def mine_suggestions(seed: str, marketplace: str, impersonate: str, limit: int,
+                     fetch: Optional[Callable] = None) -> tuple[dict[str, int], Optional[str]]:
+    """Ask Amazon autocomplete for long-tail variants of the seed.
+
+    Returns ({keyword: best_rank}, note) where rank encodes expansion-order +
+    position (lower = surfaced earlier = stronger demand signal), and note is
+    set when the seed was exhausted and a broader head term was used instead.
+    """
+    fetch = fetch or Fetcher.get
+    mid = MARKETPLACES[marketplace][2]
+    seed = " ".join(seed.split())
+
+    for index, term in enumerate(head_terms(seed)):
+        found = _suggest_for(term, mid, impersonate, limit, fetch)
+        if not found:
+            continue
+        best = dict(sorted(found.items(), key=lambda kv: kv[1])[:limit])
+        if index == 0:
+            return best, None
+        return best, (
+            f'"{seed}" is already specific — Amazon autocomplete offers nothing '
+            f'below it. Broadened to "{term}" to find the long tail; results are '
+            f'siblings of your phrase, not children of it.'
+        )
+    return {}, None
 
 
 class LongTailSpider(Spider):
@@ -195,6 +252,12 @@ class LongTailSpider(Spider):
     download_delay = 1.5
     max_blocked_retries = 3
     logging_level = logging.INFO
+    # Let Scrapling pick the delay per domain and back off when Amazon starts
+    # blocking, instead of trusting one hand-tuned constant everywhere.
+    autothrottle_enabled = True
+    # Replay cached responses while iterating on parse logic. Off unless asked:
+    # a stale cache silently scoring old data would be worse than a slow run.
+    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
 
     def __init__(
         self,
@@ -341,7 +404,9 @@ def main() -> None:
             proxy_pool = [p.strip() for p in args.proxies.split(",") if p.strip()]
 
     print(f'Mining Amazon autocomplete for "{args.seed}" long-tails...')
-    candidates = mine_suggestions(args.seed, args.marketplace, args.impersonate, args.max_keywords)
+    candidates, broaden_note = mine_suggestions(args.seed, args.marketplace, args.impersonate, args.max_keywords)
+    if broaden_note:
+        print(f"note: {broaden_note}")
     if not candidates:
         sys.exit("No autocomplete suggestions found - try a broader seed keyword.")
     print(f"Found {len(candidates)} candidates; validating each against live search results...\n")

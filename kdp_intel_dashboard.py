@@ -22,7 +22,7 @@ Usage:
 Outputs: kdp_dashboard_<mkt>_<slug>.html + kdp_intel_<mkt>_<slug>.json
 
 Estimates disclaimer: BSR->sales uses a public log-interpolated curve
-(anchors in _BSR_ANCHORS); treat outputs as order-of-magnitude evidence,
+(anchors in kdp_estimates); treat outputs as order-of-magnitude evidence,
 not accounting. Same ToS / proxy caveats as the sibling scripts.
 """
 
@@ -62,46 +62,28 @@ from kdp_longtail_finder import (  # noqa: E402
     mine_suggestions,
 )
 from kdp_niche_validator import Book, KDPNicheSpider  # noqa: E402
+import kdp_estimates  # noqa: E402
 
 from scrapling.fetchers import FetcherSession, ProxyRotator  # noqa: E402
 from scrapling.spiders import Request, Response, Spider  # noqa: E402
 
-# Public BSR -> sales/day anchors (Kindle Store), log-log interpolated.
-# Order-of-magnitude estimates in the spirit of the widely used calculators.
-_BSR_ANCHORS = [
-    (1, 5000.0), (10, 1500.0), (100, 350.0), (1_000, 100.0), (5_000, 30.0),
-    (10_000, 15.0), (50_000, 3.0), (100_000, 1.0), (500_000, 0.15), (1_000_000, 0.03),
-]
-
+# BSR->sales and royalty maths live in kdp_estimates so the CLI, the royalty
+# engine and the web app can never disagree again. These thin wrappers keep
+# the historical float-returning call sites working; use kdp_estimates
+# directly when you want the uncertainty band.
 _TITLE_STOPWORDS = {
     "the", "a", "an", "and", "or", "of", "for", "to", "in", "with", "your",
     "on", "that", "this", "you", "how", "is", "are", "&", "-", "|", "by",
 }
 
 
-def est_sales_per_day(bsr: Optional[int]) -> Optional[float]:
-    if not bsr or bsr <= 0:
-        return None
-    xs = [a[0] for a in _BSR_ANCHORS]
-    if bsr <= xs[0]:
-        return _BSR_ANCHORS[0][1]
-    if bsr >= xs[-1]:
-        return _BSR_ANCHORS[-1][1]
-    i = bisect.bisect_left(xs, bsr)
-    x0, y0 = _BSR_ANCHORS[i - 1]
-    x1, y1 = _BSR_ANCHORS[i]
-    t = (math.log10(bsr) - math.log10(x0)) / (math.log10(x1) - math.log10(x0))
-    return 10 ** (math.log10(y0) + t * (math.log10(y1) - math.log10(y0)))
+def est_sales_per_day(bsr: Optional[int], marketplace: str = "us") -> Optional[float]:
+    e = kdp_estimates.sales_per_day(bsr, store="kindle", marketplace=marketplace)
+    return e.mid if e else None
 
 
 def kdp_royalty_per_sale(price: Optional[float]) -> Optional[float]:
-    """KDP ebook royalty: 70% in the $2.99-$9.99 band (minus ~$0.06 typical
-    delivery fee), 35% outside it."""
-    if price is None or price <= 0:
-        return None
-    if 2.99 <= price <= 9.99:
-        return round(max(0.0, price * 0.70 - 0.06), 2)
-    return round(price * 0.35, 2)
+    return kdp_estimates.royalty_per_sale("ebook", price)["royalty"]
 
 
 class BookIntel(BaseModel):
@@ -140,6 +122,12 @@ class DeepDiveSpider(Spider):
     download_delay = 1.5
     max_blocked_retries = 3
     logging_level = logging.INFO
+    # Let Scrapling pick the delay per domain and back off when Amazon starts
+    # blocking, instead of trusting one hand-tuned constant everywhere.
+    autothrottle_enabled = True
+    # Replay cached responses while iterating on parse logic. Off unless asked:
+    # a stale cache silently scoring old data would be worse than a slow run.
+    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
 
     def __init__(self, books: list[Book], session_kwargs: dict[str, Any], **kwargs):
         self.books = books
@@ -254,6 +242,8 @@ class ComplaintSpider(Spider):
     download_delay = 1.5
     max_blocked_retries = 2
     logging_level = logging.INFO
+    autothrottle_enabled = True
+    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
 
     def __init__(self, books: list[Book], domain: str, session_kwargs: dict[str, Any], **kwargs):
         self.books = books
@@ -561,7 +551,9 @@ def main() -> None:
     # 1+2 - long-tail mining + validation
     print(f'[1/5] Mining + validating long-tails for "{args.seed}"...')
     with timed("keywords"):
-        candidates = mine_suggestions(args.seed, args.marketplace, args.impersonate, args.max_keywords)
+        candidates, broaden_note = mine_suggestions(args.seed, args.marketplace, args.impersonate, args.max_keywords)
+        if broaden_note:
+            print(f"note: {broaden_note}")
         lt_spider = LongTailSpider(
             candidates=candidates or {args.seed: 0},
             store=STORES[args.store],
