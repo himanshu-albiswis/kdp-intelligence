@@ -1,19 +1,24 @@
-"""Trend Radar v1 — social listening cross-checked against live Amazon.
+"""Trend Radar — social listening cross-checked against live Amazon.
 
-Sources (graded honestly, per live probing):
-  * Google autocomplete  — works everywhere, strongest volume proxy
-  * YouTube autocomplete — works everywhere, strong for how-to niches
-  * Reddit public JSON   — works from residential IPs; datacenter IPs get
-                           403 (Reddit blocks them). Degrades gracefully.
-  * X/Twitter            — deliberately excluded: logged-out X serves only a
-                           JavaScript wall; access requires a logged-in
-                           browser account (ToS/ban risk) or the paid API.
+Sources come from `server.sources`, which grades each one honestly. Probed
+2026-08-31 from a residential IP, including through a Camoufox stealth
+browser:
 
-Every surviving candidate is validated against live Amazon (competition,
-review moat, book-relevance) through the existing LongTailSpider, then
-placed in a GO / ANGLE / VERIFY / AVOID quadrant. Demand here is *breadth*
-(how many independent sources surface the phrase) — v2 adds time-series
-momentum once scheduled runs accumulate history.
+  * Google / YouTube autocomplete — work everywhere; strongest volume proxy
+  * Reddit  — anonymous JSON API is closed (403 regardless of IP or browser
+    fingerprint). Uses the free official OAuth API when credentials are set,
+    otherwise the public RSS feed, which carries titles but no scores.
+  * OpenLibrary — catalogue supply and saturation, independent of Amazon
+  * X/Twitter and TikTok — excluded with recorded evidence; see
+    `server.sources.registry.EXCLUDED`. Neither yields data without a paid
+    API or ToS-violating signature scraping, and a niche tool that invents
+    social proof is worse than one that admits the gap.
+
+Every surviving candidate is validated against live Amazon through the
+existing LongTailSpider, then placed in a GO / ANGLE / VERIFY / AVOID
+quadrant. Demand here is *breadth* (how many independent sources surface
+the phrase) — v2 adds time-series momentum once scheduled runs accumulate
+history.
 """
 
 import json
@@ -27,7 +32,13 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 from kdp_longtail_finder import STORES, LongTailSpider  # noqa: E402
-from scrapling.fetchers import Fetcher  # noqa: E402
+
+# The app runs as `uvicorn app:app --app-dir server` (flat modules) while the
+# tests import `server.trends` (package). Support both import shapes.
+try:  # pragma: no cover - import-shape shim
+    from .sources import registry  # noqa: E402
+except ImportError:  # pragma: no cover
+    from sources import registry  # noqa: E402
 
 ProgressFn = Callable[[str, int, str], None]
 
@@ -36,77 +47,20 @@ EXPANSIONS = ["", " book", " for", " how to", " workbook", " guide", " for begin
 JUNK = re.compile(r"\b(pdf|free download|login|near me|reddit|youtube|amazon)\b", re.I)
 
 
-def _fetch(url: str, impersonate: str) -> Any:
-    return Fetcher.get(url, impersonate=impersonate, stealthy_headers=False, timeout=20)
+def _phrases(result) -> list[str]:
+    """Autocomplete sources yield phrases; Reddit yields post titles."""
+    if not result.usable:
+        return []
+    return [i.get("phrase") or i.get("title") or "" for i in result.items]
 
 
-def _suggest(base_params: str, topic: str, impersonate: str) -> list[str]:
-    out: list[str] = []
-    for suffix in EXPANSIONS:
-        q = (topic + suffix).strip()
-        try:
-            page = _fetch(
-                f"https://suggestqueries.google.com/complete/search?client=firefox&{base_params}"
-                f"&q={q.replace(' ', '+')}",
-                impersonate,
-            )
-            data = json.loads(page.body if isinstance(page.body, str) else page.body.decode("utf-8", "ignore"))
-            out.extend(s for s in data[1] if isinstance(s, str))
-        except Exception:
-            continue
-    return out
-
-
-def google_suggestions(topic: str, impersonate: str = "edge") -> list[str]:
-    return _suggest("hl=en&gl=us", topic, impersonate)
-
-
-def youtube_suggestions(topic: str, impersonate: str = "edge") -> list[str]:
-    return _suggest("ds=yt&hl=en&gl=us", topic, impersonate)
-
-
-def reddit_signals(topic: str, impersonate: str = "edge") -> dict[str, Any]:
-    """Recent Reddit posts asking about the topic. 403 from datacenter IPs."""
-    posts, blocked = [], False
-    for query in (f'"{topic}" book', f"{topic} recommendations"):
-        try:
-            page = _fetch(
-                f"https://www.reddit.com/search.json?q={query.replace(' ', '+')}"
-                "&sort=top&t=month&limit=15",
-                impersonate,
-            )
-            if page.status != 200:
-                blocked = True
-                continue
-            body = page.body if isinstance(page.body, str) else page.body.decode("utf-8", "ignore")
-            for child in json.loads(body).get("data", {}).get("children", []):
-                d = child.get("data", {})
-                posts.append({
-                    "title": d.get("title", "")[:160],
-                    "subreddit": d.get("subreddit"),
-                    "score": d.get("score", 0),
-                    "comments": d.get("num_comments", 0),
-                    "url": "https://www.reddit.com" + d.get("permalink", ""),
-                })
-        except Exception:
-            blocked = True
-    # dedupe by title
-    seen, unique = set(), []
-    for p in sorted(posts, key=lambda p: -p["score"]):
-        if p["title"] not in seen:
-            seen.add(p["title"])
-            unique.append(p)
-    return {"posts": unique[:20], "blocked": blocked and not unique}
-
-
-def _mine_candidates(topic: str, google: list[str], youtube: list[str],
-                     reddit_posts: list[dict]) -> list[dict[str, Any]]:
+def _mine_candidates(topic: str, sources: dict) -> list[dict[str, Any]]:
     """Merge sources into ranked candidate phrases with corroboration breadth."""
     topic_words = set(topic.lower().split())
     scores: dict[str, dict[str, Any]] = {}
 
     def add(phrase: str, source: str, weight: float) -> None:
-        phrase = re.sub(r"\s+", " ", phrase.lower().strip())
+        phrase = re.sub(r"\s+", " ", (phrase or "").lower().strip())
         if (len(phrase) < 4 or len(phrase) > 80 or JUNK.search(phrase)
                 or not topic_words & set(phrase.split())):
             return
@@ -114,13 +68,19 @@ def _mine_candidates(topic: str, google: list[str], youtube: list[str],
         entry["sources"].add(source)
         entry["weight"] += weight
 
-    for i, s in enumerate(google):
-        add(s, "google", 1.0 / (1 + i * 0.1))
-    for i, s in enumerate(youtube):
-        add(s, "youtube", 0.8 / (1 + i * 0.1))
-    for p in reddit_posts:
-        # reddit titles are sentences; mine phrases around the topic words
-        add(p["title"], "reddit", min(p["score"], 500) / 500)
+    for i, phrase in enumerate(_phrases(sources.get("google"))):
+        add(phrase, "google", 1.0 / (1 + i * 0.1))
+    for i, phrase in enumerate(_phrases(sources.get("youtube"))):
+        add(phrase, "youtube", 0.8 / (1 + i * 0.1))
+
+    reddit = sources.get("reddit")
+    if reddit is not None and reddit.usable:
+        for item in reddit.items:
+            score = item.get("score")
+            # RSS has no scores. Weight those posts by presence alone rather
+            # than treating "unknown engagement" as "zero engagement".
+            weight = min(score, 500) / 500 if score is not None else 0.3
+            add(item.get("title", ""), "reddit", weight)
 
     ranked = sorted(scores.values(), key=lambda e: (-len(e["sources"]), -e["weight"]))
     return [{"phrase": e["phrase"], "sources": sorted(e["sources"]),
@@ -149,21 +109,19 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
     impersonate: str = params.get("impersonate", "edge")
     warnings: list[str] = []
 
-    progress("sources", 10, "Reading Google autocomplete (US)")
-    google = google_suggestions(topic, impersonate)
-    progress("sources", 25, f"Google: {len(google)} phrases · reading YouTube")
-    youtube = youtube_suggestions(topic, impersonate)
-    progress("sources", 40, f"YouTube: {len(youtube)} phrases · reading Reddit")
-    reddit = reddit_signals(topic, impersonate)
-    if reddit["blocked"]:
-        warnings.append("Reddit returned 403 (datacenter IP). Configure residential proxies to include "
-                        "Reddit demand signals; Google + YouTube still counted.")
+    progress("sources", 10, "Collecting demand signals (Google, YouTube, Reddit, OpenLibrary)")
+    sources = registry.collect_all(topic, impersonate=impersonate)
+    health = registry.health(sources)
+    progress("sources", 40, f"{health['ok']} source(s) answered, {len(health['degraded'])} degraded")
+    for name in health["degraded"]:
+        warnings.append(f"{name}: {sources[name].detail}")
 
     progress("mine", 50, "Merging sources into candidate phrases")
-    candidates = _mine_candidates(topic, google, youtube, reddit["posts"])
+    candidates = _mine_candidates(topic, sources)
     if not candidates:
         return {"topic": topic, "generated_at": datetime.now().isoformat(timespec="seconds"),
-                "sources": {"google": google, "youtube": youtube, "reddit": reddit},
+                "sources": {n: r.as_dict() for n, r in sources.items()},
+                "source_health": health,
                 "candidates": [], "validated": [],
                 "warnings": warnings + ["No candidate phrases mined — try a broader topic."]}
 
@@ -201,13 +159,8 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
         "marketplace": marketplace,
         "store": store_key,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
-        "sources": {
-            "google": google[:40],
-            "youtube": youtube[:40],
-            "reddit": reddit,
-            "excluded": {"x_twitter": "logged-out X serves a JavaScript wall; needs a logged-in "
-                                       "account (ToS risk) or the paid API — excluded from v1"},
-        },
+        "sources": {n: r.as_dict() for n, r in sources.items()},
+        "source_health": health,
         "candidates": candidates[:30],
         "validated": validated,
         "warnings": warnings,
