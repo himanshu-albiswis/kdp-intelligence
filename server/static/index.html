@@ -490,8 +490,7 @@ async function refreshJobs(){
   $("#jobs").innerHTML = jobs.length ? jobs.map(j => `
     <div class="job ${j.id===activeJob?"active":""}" role="button" tabindex="0"
          aria-current="${j.id===activeJob}" aria-label="Open ${esc(j.seed)} ${j.kind||"research"} job, ${j.status}"
-         onclick="openJob('${j.id}')"
-         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openJob('${j.id}')}">
+         data-action="open-job" data-job="${esc(j.id)}">
       <div class="t">${esc(j.seed)} ${j.demo?'<span class="small">(demo)</span>':""}</div>
       <div class="m"><span class="chip kind">${j.kind||"research"}</span> ${j.marketplace.toUpperCase()} · ${esc((j.created_at||"").slice(0,16).replace("T"," "))}</div>
       <div class="m"><span class="chip st-${j.status}">${j.status}</span> ${j.status==="running"?esc(j.stage):""}</div>
@@ -567,7 +566,7 @@ function renderResearch(job){
   $("#main").innerHTML = `
     <div class="pagehead">
       <h2>“${esc(r.seed)}” <span class="small">· ${r.marketplace.toUpperCase()} · ${esc(r.store||"")} · focus “${esc(r.focus_keyword)}”</span></h2>
-      <button class="btn mini" onclick="makeBrief('${job.id}')">Generate Niche Brief</button>
+      <button class="btn mini" data-action="brief" data-job="${esc(job.id)}">Generate Niche Brief</button>
     </div>
     ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
     <div id="briefBox">${r.brief ? briefHtml(r.brief, cur) : ""}</div>
@@ -585,7 +584,7 @@ function renderResearch(job){
       Nothing here is a zero; it is an absence of data.</div>` : `
     <div class="tablewrap"><table>
       <tr>${[["keyword","Keyword"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
-        .map(([k,l])=>`<th><button type="button" class="sort" onclick="setSort('${k}')" aria-label="Sort by ${l}">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</button></th>`).join("")}</tr>
+        .map(([k,l])=>`<th><button type="button" class="sort" data-action="sort" data-key="${esc(k)}" aria-label="Sort by ${esc(l)}">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</button></th>`).join("")}</tr>
       ${kws.map(k=>`<tr>
         <td><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.keyword)}</a></td>
         <td class="num">${fmt(k.total_results)}</td><td class="num">${Math.round(k.median_reviews)}</td>
@@ -682,6 +681,30 @@ function renderTrends(job){
 }
 
 /* ---------- forms ---------- */
+/* ---------- event delegation ----------
+   Handlers are bound here rather than written into onclick attributes.
+   Discovery concepts come from Amazon titles and Reddit posts, and
+   HTML-escaping is not sufficient inside a JavaScript context: esc() emits
+   &#39;, which the HTML parser decodes back to a quote before the JS is
+   parsed, letting a crafted title break out of the string literal. Keeping
+   values in data- attributes means they are never parsed as code. */
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const act = el.dataset.action;
+  if (act === "open-job")      openJob(el.dataset.job);
+  else if (act === "brief")    makeBrief(el.dataset.job);
+  else if (act === "sort")     setSort(el.dataset.key);
+  else if (act === "validate") validateConcept(el.dataset.phrase);
+});
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const el = e.target.closest('[data-action="open-job"]');
+  if (!el) return;
+  e.preventDefault();
+  openJob(el.dataset.job);
+});
+
 const CATS = [["health","Health"],["self_help","Self-help"],["cooking","Cooking"],
               ["finance","Finance"],["kids","Kids & parenting"],["career","Career"]];
 $("#catGrid").innerHTML = CATS.map(([v,l]) =>
@@ -737,7 +760,7 @@ function renderDiscovery(job){
           ${c.evidence.map(e=>`<div class="ev"><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc((e.text||"").slice(0,140))}</a>
             <span class="small">${esc(e.source)}${e.subreddit?" · r/"+esc(e.subreddit):""}</span></div>`).join("")}
         </details>
-        <button class="btn mini" onclick="validateConcept('${esc(c.validate_phrase).replace(/'/g,"\\'")}')">Run full validation</button>
+        <button class="btn mini" data-action="validate" data-phrase="${esc(c.validate_phrase)}">Run full validation</button>
       </div>`;
     }).join("")}
     <h3>Source health</h3>
