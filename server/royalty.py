@@ -10,110 +10,45 @@ Rates encoded from the current KDP/ACX schedules; update the constants
 when Amazon changes its tables.
 """
 
-import bisect
-import math
+import os
+import sys
 from typing import Any, Optional
 
-# BSR -> sales/day anchor curves (public approximations, log-log interpolated)
-KINDLE_ANCHORS = [
-    (1, 5000.0), (10, 1500.0), (100, 350.0), (1_000, 100.0), (5_000, 30.0),
-    (10_000, 15.0), (50_000, 3.0), (100_000, 1.0), (500_000, 0.15), (1_000_000, 0.03),
-]
-BOOKS_ANCHORS = [
-    (100, 400.0), (1_000, 65.0), (5_000, 20.0), (10_000, 10.0), (25_000, 5.0),
-    (50_000, 2.5), (100_000, 1.0), (500_000, 0.1),
-]
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-EBOOK_DELIVERY_PER_MB = 0.15
-KENP_RATE = 0.0045          # $/page read; Amazon sets it monthly, ~0.004-0.005
-PRINT_FIXED_BW = 0.85       # + per-page
-PRINT_PER_PAGE_BW = 0.012
-PRINT_PER_PAGE_COLOR = 0.065
-HARDCOVER_FIXED = 5.65
+import kdp_estimates  # noqa: E402
+
+# All BSR->sales and royalty maths come from the shared engine; this module
+# owns only the break-even inversion built on top of them.
+KINDLE_ANCHORS = kdp_estimates.KINDLE_ANCHORS
+BOOKS_ANCHORS = kdp_estimates.BOOKS_ANCHORS
+KENP_RATE = kdp_estimates.KENP_RATE
 
 
-def _anchors(store: str) -> list[tuple[int, float]]:
-    return KINDLE_ANCHORS if store == "kindle" else BOOKS_ANCHORS
+def sales_per_day(bsr: Optional[int], store: str = "kindle",
+                  marketplace: str = "us") -> Optional[float]:
+    e = kdp_estimates.sales_per_day(bsr, store=store, marketplace=marketplace)
+    return e.mid if e else None
 
 
-def sales_per_day(bsr: Optional[int], store: str = "kindle") -> Optional[float]:
-    if not bsr or bsr <= 0:
-        return None
-    anchors = _anchors(store)
-    xs = [a[0] for a in anchors]
-    if bsr <= xs[0]:
-        return anchors[0][1]
-    if bsr >= xs[-1]:
-        return anchors[-1][1]
-    i = bisect.bisect_left(xs, bsr)
-    (x0, y0), (x1, y1) = anchors[i - 1], anchors[i]
-    t = (math.log10(bsr) - math.log10(x0)) / (math.log10(x1) - math.log10(x0))
-    return 10 ** (math.log10(y0) + t * (math.log10(y1) - math.log10(y0)))
+def sales_band(bsr: Optional[int], store: str = "kindle",
+               marketplace: str = "us"):
+    """The full uncertainty band, for callers that should not show a point value."""
+    return kdp_estimates.sales_per_day(bsr, store=store, marketplace=marketplace)
 
 
 def bsr_for_sales(sales_day: float, store: str = "kindle") -> Optional[int]:
-    """Inverse of the curve: what BSR does a sales rate correspond to?"""
-    if sales_day <= 0:
-        return None
-    anchors = _anchors(store)
-    ys = [a[1] for a in anchors]
-    if sales_day >= ys[0]:
-        return anchors[0][0]
-    if sales_day <= ys[-1]:
-        return anchors[-1][0]
-    # ys descend; find the bracketing pair
-    for i in range(1, len(anchors)):
-        if ys[i] <= sales_day:
-            (x0, y0), (x1, y1) = anchors[i - 1], anchors[i]
-            t = (math.log10(sales_day) - math.log10(y0)) / (math.log10(y1) - math.log10(y0))
-            return int(round(10 ** (math.log10(x0) + t * (math.log10(x1) - math.log10(x0)))))
-    return anchors[-1][0]
+    return kdp_estimates.bsr_for_sales(sales_day, store)
 
 
-def royalty_per_sale(
-    fmt: str,
-    price: float,
-    pages: int = 120,
-    color: bool = False,
-    file_mb: float = 2.0,
-) -> dict[str, Any]:
-    """Royalty per sale for a format. fmt: ebook | paperback | hardcover | audiobook_acx | audiobook_wide."""
-    notes: list[str] = []
-    if fmt == "ebook":
-        if 2.99 <= price <= 9.99:
-            delivery = round(file_mb * EBOOK_DELIVERY_PER_MB, 2)
-            r = 0.70 * price - delivery
-            plan = "70%"
-            notes.append(f"70% plan, minus ${delivery:.2f} delivery ({file_mb}MB)")
-        else:
-            r = 0.35 * price
-            plan = "35%"
-            notes.append("outside the $2.99–$9.99 band -> 35% plan, no delivery fee")
-        return {"royalty": round(max(0.0, r), 2), "plan": plan, "print_cost": None, "notes": notes}
-
-    if fmt in ("paperback", "hardcover"):
-        fixed = HARDCOVER_FIXED if fmt == "hardcover" else PRINT_FIXED_BW
-        per_page = PRINT_PER_PAGE_COLOR if color else PRINT_PER_PAGE_BW
-        print_cost = round(fixed + pages * per_page, 2)
-        r = 0.60 * price - print_cost
-        if r < 0:
-            notes.append(f"price below break-even — minimum viable list is ${print_cost / 0.60:.2f}")
-        if color:
-            notes.append("premium color printing — verify against the KDP calculator for your trim")
-        return {"royalty": round(max(0.0, r), 2), "plan": "60% − printing", "print_cost": print_cost, "notes": notes}
-
-    if fmt == "audiobook_acx":
-        return {"royalty": round(0.40 * price, 2), "plan": "40% (Audible-exclusive)", "print_cost": None,
-                "notes": ["ACX exclusive is a 7-year commitment; royalty-share narration halves your side"]}
-    if fmt == "audiobook_wide":
-        return {"royalty": round(0.25 * price, 2), "plan": "25% (wide)", "print_cost": None, "notes": []}
-
-    raise ValueError(f"unknown format {fmt!r}")
+def royalty_per_sale(fmt: str, price: float, pages: int = 120, color: bool = False,
+                     file_mb: float = 2.0) -> dict[str, Any]:
+    return kdp_estimates.royalty_per_sale(fmt, price, pages=pages, color=color,
+                                          file_mb=file_mb)
 
 
 def ku_read_payout(kenp_pages: int) -> float:
-    """Payout for one full KU read-through of a book with this KENP length."""
-    return round(kenp_pages * KENP_RATE, 2)
+    return kdp_estimates.ku_payout_per_read(kenp_pages)
 
 
 def break_even(
