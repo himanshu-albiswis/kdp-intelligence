@@ -16,6 +16,15 @@ EXPANSIONS = ["", " book", " for", " how to", " workbook", " guide",
 
 
 def _suggest(name: str, params: str, topic: str, fetch: Callable) -> base.SourceResult:
+    # An empty topic expands to the bare suffixes — "for", "book", "how to",
+    # "guide", "vs" — and Google answers with its most popular completions.
+    # A live scan built on that returned "formal shoes for men" and
+    # "forza horizon 6" as book opportunities. Refuse rather than harvest noise.
+    if not (topic or "").strip():
+        return base.unavailable(
+            name, "no topic supplied; expanding an empty topic asks the engine to "
+                  "complete bare words like \"for\" and returns unrelated products")
+
     phrases: list[str] = []
     errors: list[str] = []
     for suffix in EXPANSIONS:

@@ -66,6 +66,76 @@ def _phrases(result) -> list[str]:
     return [i.get("phrase") or i.get("title") or "" for i in result.items]
 
 
+# Words that mark a phrase as shopping for an object rather than learning a
+# subject. A book niche is about a topic; these are about a thing you buy.
+_PRODUCT_WORDS = re.compile(
+    r"\b(shoes?|sneakers?|boots?|shirts?|jeans?|watch(es)?|bags?|wallets?"
+    r"|phones?|iphone|samsung|galaxy|oneplus|xiaomi|laptop|macbook|tablet"
+    r"|headphones?|earbuds?|speakers?|tv|television|fridge|washing machine"
+    r"|chair|sofa|mattress|car|bike|scooter|tyres?|price|cheap|discount|deals?"
+    r"|buy|shop|store|online|near me|under \d|models?|sale|products?|brands?|company|login|app|game|movie|series|season)\b", re.I)
+
+# A trailing version or model number — "forza horizon 6", "iphone 17 pro max",
+# "sony wh-1000xm5". Books rarely carry one; products almost always do.
+_MODEL_NUMBER = re.compile(r"\b([a-z]{1,4}-?\d{3,}[a-z\d]*|\d+\s*(pro|max|plus|ultra)?)$", re.I)
+
+# Words that mark something teachable. A phrase with one of these is about a
+# subject even if it also mentions an object ("air fryer cookbook").
+_LEARNABLE_WORDS = re.compile(
+    r"\b(book|books|cookbook|workbook|guide|journal|planner|recipes?|how to"
+    r"|for beginners|beginner|learn|learning|tips|handbook|manual|course"
+    r"|therapy|exercises?|training|diet|meal prep|routine|habits?|mindset"
+    r"|for dummies|step by step|made simple|explained)\b", re.I)
+
+
+def is_book_shaped(phrase: str) -> bool:
+    """Could someone publish a book on this, or is it shopping for an object?
+
+    A live seedless scan returned "formal shoes for men", "forza horizon 6"
+    and "forever living products" as opportunities. The root cause was the
+    harvest, but product searches reach a seeded scan too, and a tool for book
+    publishers should not offer them.
+    """
+    phrase = (phrase or "").strip().lower()
+    if not phrase:
+        return False
+    if _LEARNABLE_WORDS.search(phrase):
+        return True           # explicitly about learning something
+    if _PRODUCT_WORDS.search(phrase):
+        return False
+    if _MODEL_NUMBER.search(phrase):
+        return False
+    # "forever living products", "forza horizon 6" — a brand or title with no
+    # subject in it. Require at least one word suggesting a topic.
+    return len(phrase.split()) >= 3
+
+
+def _harvest_sources(topic: str, collect: Optional[Callable] = None) -> dict:
+    """Collect signals for a topic, or across the category panel when there is none.
+
+    Seedless mode used to call the collectors with an empty string, which made
+    autocomplete expand bare suffixes and return whatever Google is popular for
+    that day. Harvesting the same category seeds Discovery uses gives phrases
+    that are actually about something learnable.
+    """
+    collect = collect or registry.collect_all
+    if topic:
+        return collect(topic)
+
+    try:
+        from .discovery.collectors import CATEGORIES
+    except (ImportError, ValueError):  # pragma: no cover - flat import shape
+        from discovery.collectors import CATEGORIES  # type: ignore
+
+    merged: dict[str, Any] = {}
+    for category, spec in CATEGORIES.items():
+        for seed in spec["seeds"][:2]:          # two seeds per category keeps it quick
+            for name, result in (collect(seed) or {}).items():
+                key = f"{name}:{category}:{seed}"
+                merged[key] = result
+    return merged
+
+
 def _looks_learnable(phrase: str) -> bool:
     """Could a book plausibly teach this? Used only when there is no topic.
 
@@ -103,7 +173,7 @@ def _mine_candidates(topic: Optional[str], sources: dict) -> list[dict[str, Any]
             # An explicit topic is the user asserting relevance; respect it.
             if not topic_words & set(phrase.split()):
                 return
-        elif not _looks_learnable(phrase):
+        elif not _looks_learnable(phrase) or not is_book_shaped(phrase):
             # Seedless, nothing else filters. Google Trends' daily feed is news
             # ("bookmyshow", "formula 1"), and a live scan validated those
             # against Amazon and called one a GO. Require book intent instead.
@@ -112,19 +182,28 @@ def _mine_candidates(topic: Optional[str], sources: dict) -> list[dict[str, Any]
         entry["sources"].add(source)
         entry["weight"] += weight
 
-    for i, phrase in enumerate(_phrases(sources.get("google"))):
-        add(phrase, "google", 1.0 / (1 + i * 0.1))
-    for i, phrase in enumerate(_phrases(sources.get("youtube"))):
-        add(phrase, "youtube", 0.8 / (1 + i * 0.1))
-
-    reddit = sources.get("reddit")
-    if reddit is not None and reddit.usable:
-        for item in reddit.items:
-            score = item.get("score")
-            # RSS has no scores. Weight those posts by presence alone rather
-            # than treating "unknown engagement" as "zero engagement".
-            weight = min(score, 500) / 500 if score is not None else 0.3
-            add(item.get("title", ""), "reddit", weight)
+    # Seedless harvesting keys results per category seed ("google:health:adhd"),
+    # so iterate what was actually collected and label by the engine's own name
+    # rather than looking up fixed keys — that mismatch mined zero candidates.
+    weights = {"google": 1.0, "youtube": 0.8}
+    for result in sources.values():
+        if result is None or not result.usable:
+            continue
+        engine = getattr(result, "name", "") or ""
+        if engine == "reddit":
+            for item in result.items:
+                score = item.get("score")
+                # RSS has no scores. Weight those posts by presence alone rather
+                # than treating "unknown engagement" as "zero engagement".
+                weight = min(score, 500) / 500 if score is not None else 0.3
+                add(item.get("title", ""), "reddit", weight)
+            continue
+        base_weight = weights.get(engine)
+        if base_weight is None:
+            continue
+        for i, item in enumerate(result.items):
+            phrase = item.get("phrase") or item.get("text") or ""
+            add(phrase, engine, base_weight / (1 + i * 0.1))
 
     ranked = sorted(scores.values(), key=lambda e: (-len(e["sources"]), -e["weight"]))
     return [{"phrase": e["phrase"], "sources": sorted(e["sources"]),
@@ -172,7 +251,7 @@ def run_trend_radar(params: dict[str, Any], progress: ProgressFn) -> dict[str, A
     warnings: list[str] = []
 
     progress("sources", 10, "Collecting demand signals (Google, YouTube, Reddit, OpenLibrary)")
-    sources = registry.collect_all(topic, impersonate=impersonate)
+    sources = _harvest_sources(topic)
     health = registry.health(sources)
     progress("sources", 40, f"{health['ok']} source(s) answered, {len(health['degraded'])} degraded")
     for name in health["degraded"]:
