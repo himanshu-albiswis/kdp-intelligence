@@ -19,7 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -33,6 +34,7 @@ try:
 except ImportError:  # pragma: no cover - dotenv ships with uvicorn[standard]
     pass
 
+import auth as auth_mod
 import brief as brief_mod
 import pipeline
 from discovery import pipeline as discovery_pipeline
@@ -156,6 +158,12 @@ class ResearchRequest(BaseModel):
 def _check_key(x_api_key: Optional[str]) -> None:
     if API_KEY and x_api_key != API_KEY:
         raise HTTPException(401, "Missing or wrong X-API-Key header")
+
+
+@app.get("/api/config")
+def config() -> dict[str, Any]:
+    """What the browser needs to boot. The Clerk secret key never appears here."""
+    return auth_mod.config_payload(legacy_key_set=bool(API_KEY))
 
 
 @app.get("/api/health")
@@ -344,6 +352,24 @@ def delete_research(job_id: str, x_api_key: Optional[str] = Header(default=None)
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(os.path.join(SERVER_DIR, "static", "index.html"))
+
+
+@app.middleware("http")
+async def clerk_gate(request: Request, call_next):
+    """When Clerk is configured, every /api route needs a session.
+
+    /api/health and /api/config stay open — probes must probe, and the
+    sign-in screen needs the publishable key before anyone is signed in.
+    The page itself also loads signed-out so the sign-in UI can render.
+    """
+    path = request.url.path
+    if (auth_mod.mode() == "clerk" and path.startswith("/api/")
+            and path not in auth_mod.OPEN_PATHS):
+        try:
+            request.state.user = auth_mod.check_request(request)
+        except auth_mod.AuthRejected as rejected:
+            return JSONResponse(status_code=401, content={"detail": rejected.detail})
+    return await call_next(request)
 
 
 app.mount("/static", StaticFiles(directory=os.path.join(SERVER_DIR, "static")), name="static")
