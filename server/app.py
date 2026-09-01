@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,7 @@ import pipeline
 from discovery import pipeline as discovery_pipeline
 from discovery.store import DiscoveryStore
 import royalty as royalty_mod
+import export as export_mod
 import teardown as teardown_mod
 import trends as trends_mod
 
@@ -312,6 +313,22 @@ def get_research(job_id: str) -> dict[str, Any]:
     if row["result"]:
         out["result"] = json.loads(row["result"])
     return out
+
+
+@app.get("/api/research/{job_id}/csv")
+def export_csv(job_id: str, table: str) -> PlainTextResponse:
+    """One table of a finished job as CSV. `table` from /api/research/{id}."""
+    with _db_lock, _db() as conn:
+        row = conn.execute("SELECT result FROM jobs WHERE id = ?", [job_id]).fetchone()
+    if row is None or not row["result"]:
+        raise HTTPException(404, "No finished result for that job")
+    bundle = json.loads(row["result"])
+    try:
+        filename, text = export_mod.table_csv(bundle, table)
+    except KeyError as exc:
+        raise HTTPException(400, str(exc))
+    return PlainTextResponse(text, media_type="text/csv", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.delete("/api/research/{job_id}")

@@ -72,12 +72,15 @@ def block_advice(impersonate: str, stealthy: bool) -> str:
     is expensive advice for what was usually a fingerprint setting.
     """
     steps = []
-    if impersonate in STEALTH_INCOMPATIBLE or stealthy:
+    if impersonate in STEALTH_INCOMPATIBLE:
+        # Only sensible when the fingerprint is actually the problem; telling
+        # an edge user to "switch from edge to edge" happened in a live block.
         steps.append(
-            f"switch the fingerprint from {impersonate} to 'edge' (the chrome "
+            f"switch the fingerprint from {impersonate} to 'edge' (the {impersonate} "
             f"fingerprint with stealth headers is refused by Amazon)"
         )
-    steps.append("tick 'Plain headers' to drop the faked Google referer")
+    if stealthy:
+        steps.append("tick 'Plain headers' to drop the faked Google referer")
     steps.append("try the 'safari' fingerprint")
     steps.append("only then add a residential proxy — datacenter IPs are blocked outright")
     ordered = "; ".join(f"{i}) {step}" for i, step in enumerate(steps, 1))

@@ -122,6 +122,11 @@ class KeywordMetrics(BaseModel):
     opportunity: int = Field(default=0, ge=0, le=100)
     verdict: str = ""
     url: str = ""
+    # Demand: how eagerly Amazon autocomplete surfaces the phrase. An honest
+    # comparability index, never a volume claim — see kdp_estimates.demand_index.
+    demand_index: int = Field(default=0, ge=0, le=100)
+    demand_band: str = ""
+    demand_basis: str = ""
 
 
 def opportunity_score(m: KeywordMetrics) -> int:
@@ -164,6 +169,76 @@ DEAD_TERM_PROBES = 4
 
 _TRAILING_STOPWORDS = {"for", "with", "without", "and", "or", "the", "a", "an",
                        "of", "to", "in", "on", "your", "my", "at", "by"}
+
+
+# Prefix lengths worth probing. One request per length, shallowest first, so
+# a keyword that surfaces early costs one call and none costs more than five.
+PREFIX_PROBES = (3, 5, 8, 12, None)   # None = the full keyword
+
+
+def attach_demand(metrics: list["KeywordMetrics"], marketplace: str,
+                  impersonate: str, fetch: Optional[Callable] = None,
+                  max_workers: int = 6) -> None:
+    """Probe autocomplete depth for every keyword and attach the demand index.
+
+    Probes are independent, so they fan out; one failing keyword reads as
+    "thin" rather than sinking the batch. At most five requests per keyword
+    (see PREFIX_PROBES), usually one or two.
+    """
+    import kdp_estimates
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not metrics:
+        return
+
+    def one(metric: "KeywordMetrics") -> None:
+        depth, position = probe_prefix_depth(metric.keyword, marketplace,
+                                             impersonate, fetch=fetch)
+        reading = kdp_estimates.demand_index(
+            prefix_len=depth, keyword_len=len(metric.keyword),
+            position=position, suggest_rank=metric.suggest_rank)
+        metric.demand_index = reading["index"]
+        metric.demand_band = reading["band"]
+        metric.demand_basis = reading["basis"]
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(metrics))) as pool:
+        list(pool.map(one, metrics))
+
+
+def probe_prefix_depth(keyword: str, marketplace: str, impersonate: str,
+                       fetch: Optional[Callable] = None) -> tuple[Optional[int], Optional[int]]:
+    """(shallowest prefix length that surfaces the keyword, dropdown position).
+
+    The classic demand proxy: Amazon only suggests what people type, so the
+    fewer characters it takes for the phrase to appear, the more people type
+    it. Returns (None, None) when it never surfaces or the probe fails.
+    """
+    fetch = fetch or Fetcher.get
+    mid = MARKETPLACES[marketplace][2]
+    normalised = " ".join(keyword.lower().split())
+
+    for probe in PREFIX_PROBES:
+        length = len(keyword) if probe is None else probe
+        if probe is not None and length >= len(keyword):
+            length = len(keyword)
+        prefix = keyword[:length]
+        try:
+            page = fetch(
+                "https://completion.amazon.com/api/2017/suggestions"
+                f"?mid={mid}&alias=digital-text&limit=11&prefix={quote_plus(prefix)}",
+                impersonate=impersonate,
+                stealthy_headers=False,
+            )
+            suggestions = page.json().get("suggestions", [])
+        except Exception:
+            return None, None
+        for position, s in enumerate(suggestions):
+            value = " ".join((s.get("value") or "").lower().split())
+            if value == normalised:
+                return length, position
+        if probe is None or length == len(keyword):
+            break
+    return None, None
 
 
 def head_terms(seed: str) -> list[str]:

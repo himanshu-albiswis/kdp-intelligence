@@ -87,3 +87,19 @@ class TestBlockDiagnosis:
         assert "fingerprint" in advice.lower() or "chrome" in advice.lower()
         # The old message sent people to buy proxies for what was a config bug.
         assert advice.lower().index("chrome") < advice.lower().index("proxy")
+
+
+class TestAdviceNeverSuggestsTheCurrentState:
+    """A live block produced: "switch the fingerprint from edge to 'edge'"."""
+
+    def test_edge_users_are_not_told_to_switch_to_edge(self):
+        advice = transport.block_advice("edge", True)
+        assert "from edge to 'edge'" not in advice
+        assert "edge to edge" not in advice.replace("'", "")
+
+    def test_edge_users_are_pointed_at_the_next_lever_instead(self):
+        advice = transport.block_advice("edge", True)
+        assert "plain headers" in advice.lower() or "safari" in advice.lower()
+
+    def test_chrome_users_are_still_told_to_switch(self):
+        assert "'edge'" in transport.block_advice("chrome", True)

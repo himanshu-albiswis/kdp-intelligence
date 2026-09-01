@@ -99,6 +99,9 @@ class BookIntel(BaseModel):
     reviews: int = 0
     bsr: Optional[int] = Field(default=None, ge=1)
     category_rank: str = ""
+    # Every shelf placement, structured, for category intelligence. The
+    # display string above keeps the first for backwards compatibility.
+    category_ranks: list[dict] = Field(default_factory=list)
     publication_date: Optional[str] = None  # ISO date
     pages: Optional[int] = None
     est_sales_per_day: Optional[float] = None
@@ -167,11 +170,14 @@ class DeepDiveSpider(Spider):
         bsr = _to_count(bsr_match.group(1)) if bsr_match else None
 
         category_rank = ""
+        category_ranks: list[dict] = []
         for rank, cat in re.findall(r"#([\d,]+) in ([A-Za-z'&, -]+)", detail):
-            cat = cat.strip()
-            if cat.split()[0] not in ("Kindle", "Books"):  # skip the store-wide ranks
+            cat = cat.strip().rstrip(",")
+            if cat.split()[0] in ("Kindle", "Books"):  # skip the store-wide ranks
+                continue
+            category_ranks.append({"rank": int(rank.replace(",", "")), "category": cat[:60]})
+            if not category_rank:
                 category_rank = f"#{rank} in {cat[:40]}"
-                break
 
         pub_date_iso = None
         date_match = re.search(r"Publication date[^A-Za-z0-9]*([A-Za-z]+ \d{1,2}, \d{4})", detail)
@@ -222,6 +228,7 @@ class DeepDiveSpider(Spider):
                 reviews=book.reviews,
                 bsr=bsr,
                 category_rank=category_rank,
+                category_ranks=category_ranks,
                 publication_date=pub_date_iso,
                 pages=int(pages_match.group(1)) if pages_match else None,
                 est_sales_per_day=round(sales, 2) if sales is not None else None,

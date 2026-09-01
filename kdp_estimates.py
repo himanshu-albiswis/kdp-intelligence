@@ -326,3 +326,62 @@ def niche_income(
         "basis": (f"{counted} book(s) with rank and price, {marketplace.upper()} scale, "
                   f"KU share {ku_share:.0%} at {KENP_RATE}/page"),
     }
+
+
+# --------------------------------------------------------------------------
+# Demand index — the honest answer to "estimated searches per month"
+# --------------------------------------------------------------------------
+# Nobody outside Amazon knows search volume; tools that print one are curve-
+# fitting a guess. What is observable is how eagerly Amazon's own
+# autocomplete surfaces a phrase — Amazon only suggests what people type.
+# Two measurements, both from Amazon itself:
+#
+#   prefix depth  how few typed characters make the phrase appear.
+#                 Appearing after 3 characters is mass demand; appearing
+#                 only when fully typed is thin.
+#   position      where in the ten-slot dropdown it appears at that depth.
+#
+# The result is an index for comparing keywords, published with its basis so
+# nobody mistakes it for a volume figure.
+
+DEMAND_BANDS = [(75, "very high"), (55, "high"), (35, "moderate"), (15, "niche")]
+
+
+def demand_index(prefix_len: Optional[int], keyword_len: int,
+                 position: Optional[int], suggest_rank: int) -> dict[str, Any]:
+    """0-100 comparability index from autocomplete observations."""
+    if prefix_len is None or keyword_len <= 0:
+        return {"index": 0, "band": "thin",
+                "basis": "never surfaced by Amazon autocomplete, even fully typed"}
+
+    # Depth: how much of the phrase had to be typed. 0.15 -> ~1.0 as the
+    # required prefix shrinks; typing everything earns the floor, not zero —
+    # surfacing at all still separates it from phrases Amazon never suggests.
+    typed_share = min(1.0, max(0.0, prefix_len / max(keyword_len, 1)))
+    depth_part = 0.15 + 0.85 * (1.0 - typed_share) ** 1.5
+
+    # Position scales the depth signal rather than adding to it: slot 1 of a
+    # fully-typed phrase is still a weak signal, and treating position as an
+    # independent term inflated exactly that case.
+    pos = position if position is not None else 9
+    position_factor = 0.72 + 0.28 * max(0.3, 1.0 - pos * 0.078)
+
+    # Mining rank (which expansion surfaced it first) is a small tiebreak.
+    rank_bonus = 3.0 * max(0.0, 1.0 - suggest_rank / 300.0)
+
+    score = round(100 * depth_part * position_factor + rank_bonus)
+    score = max(1, min(100, score))
+
+    band = "thin"
+    for floor, name in DEMAND_BANDS:
+        if score >= floor:
+            band = name
+            break
+
+    return {
+        "index": score,
+        "band": band,
+        "basis": (f"Amazon autocomplete surfaces this after {prefix_len} typed "
+                  f"character(s), at dropdown position {pos + 1}. This compares "
+                  f"keywords against each other; it is not a volume estimate."),
+    }

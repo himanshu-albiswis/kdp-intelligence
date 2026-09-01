@@ -15,7 +15,13 @@ from typing import Any, Callable, Optional
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
-from kdp_longtail_finder import MARKETPLACES, STORES, LongTailSpider, mine_suggestions  # noqa: E402
+from kdp_longtail_finder import (  # noqa: E402
+    MARKETPLACES,
+    STORES,
+    LongTailSpider,
+    attach_demand,
+    mine_suggestions,
+)
 from kdp_niche_validator import KDPNicheSpider  # noqa: E402
 from kdp_intel_dashboard import (  # noqa: E402
     ComplaintSpider,
@@ -27,6 +33,11 @@ from kdp_intel_dashboard import (  # noqa: E402
 from scrapling.fetchers import ProxyRotator  # noqa: E402
 import kdp_estimates  # noqa: E402
 import kdp_adaptive  # noqa: E402
+
+try:  # pragma: no cover - import-shape shim (see server/trends.py)
+    from . import categories as categories_mod
+except ImportError:  # pragma: no cover
+    import categories as categories_mod
 
 try:  # pragma: no cover - import-shape shim (see server/trends.py)
     from . import transport
@@ -86,6 +97,10 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
     lt_spider = LongTailSpider(candidates=candidates or {seed: 0}, store=store, **common)
     lt_spider.start()
     keywords = sorted(lt_spider.results, key=lambda m: m.opportunity, reverse=True)
+    progress("keywords", 30, f"Probing autocomplete demand for {len(keywords)} keywords")
+    # The honest stand-in for "estimated searches/month": how few characters
+    # Amazon needs before it suggests the phrase. Comparability, not volume.
+    attach_demand(keywords, marketplace, impersonate)
     if lt_spider.failed_keywords:
         warnings.append(f"{len(lt_spider.failed_keywords)} keyword page(s) blocked and excluded: "
                         + ", ".join(lt_spider.failed_keywords))
@@ -179,6 +194,9 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
         "keywords": [m.model_dump() for m in keywords],
         "books": [b.model_dump() for b in books],
         "book_intel": [b.model_dump() for b in intel],
+        # Which shelves the niche actually lives on, and what each badge costs.
+        "category_intel": categories_mod.category_intel(
+            [b.model_dump() for b in intel], marketplace=marketplace, store=store_key),
         "release_velocity": velocity,
         "title_gaps": [m.keyword for m in find_title_gaps(keywords)],
         "title_ngrams": title_ngrams([b.title for b in books]),

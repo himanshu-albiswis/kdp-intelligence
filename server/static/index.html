@@ -363,6 +363,23 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     font-size:10px;letter-spacing:.09em;color:var(--faint)}
   table.teardown td{border-top:1px solid var(--stroke);padding:var(--s2) 0}
   .na{color:var(--faint)}
+  .dband{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    border-radius:var(--r-pill);padding:1px 7px;margin-left:4px;vertical-align:middle}
+  .d-very-high{background:color-mix(in srgb,var(--money) 22%,transparent);color:var(--money)}
+  .d-high{background:color-mix(in srgb,var(--money) 14%,transparent);color:var(--money)}
+  .d-moderate{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+  .d-niche{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
+  .d-thin{background:var(--stroke);color:var(--faint)}
+  .catpicks{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--s3);margin:var(--s3) 0}
+  .catpick{background:var(--glass-strong);border:1px solid var(--stroke);border-radius:var(--r-ctl);padding:var(--s4);
+    display:flex;flex-direction:column;gap:var(--s2)}
+  .catpick .cp-head{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+  .catpick .cp-bar{font-size:15px;color:var(--money);font-weight:600}
+  .btnrow{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+  .ghostmini{background:transparent;color:var(--accent);border:1px solid var(--stroke-strong);
+    height:32px;padding:0 var(--s3);font-size:12px;display:inline-flex;align-items:center;
+    border-radius:var(--r-ctl);text-decoration:none;font-weight:600}
+  .ghostmini:hover{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -576,6 +593,10 @@ function incomeCard(inc, cur){
   </div>`;
 }
 
+function exportBtn(jobId, table, label){
+  return `<a class="btn mini ghostmini" href="/api/research/${jobId}/csv?table=${table}" download>⬇ ${esc(label)}</a>`;
+}
+
 /* ---------- research view ---------- */
 function renderResearch(job){
   if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Job failed.</b> ${esc(job.message)}</div>`;
@@ -588,7 +609,8 @@ function renderResearch(job){
   $("#main").innerHTML = `
     <div class="pagehead">
       <h2>“${esc(r.seed)}” <span class="small">· ${r.marketplace.toUpperCase()} · ${esc(r.store||"")} · focus “${esc(r.focus_keyword)}”</span></h2>
-      <button class="btn mini" data-action="brief" data-job="${esc(job.id)}">Generate Niche Brief</button>
+      <div class="btnrow">${exportBtn(job.id,"keywords","Keywords CSV")}${exportBtn(job.id,"book_intel","Money CSV")}${exportBtn(job.id,"categories","Categories CSV")}
+      <button class="btn mini" data-action="brief" data-job="${esc(job.id)}">Generate Niche Brief</button></div>
     </div>
     ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
     <div id="briefBox">${r.brief ? briefHtml(r.brief, cur) : ""}</div>
@@ -605,10 +627,11 @@ function renderResearch(job){
       results page for this seed, so nothing could be validated — the warnings above say why.
       Nothing here is a zero; it is an absence of data.</div>` : `
     <div class="tablewrap"><table>
-      <tr>${[["keyword","Keyword"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
+      <tr>${[["keyword","Keyword"],["demand_index","Demand"],["total_results","Results"],["median_reviews","Med rev"],["pct_under_100","<100"],["ku_share","KU%"],["phrase_in_titles","In titles"],["opportunity","Score"],["verdict","Verdict"]]
         .map(([k,l])=>`<th><button type="button" class="sort" data-action="sort" data-key="${esc(k)}" aria-label="Sort by ${esc(l)}">${l}${sortKey===k?(sortDir<0?" ↓":" ↑"):""}</button></th>`).join("")}</tr>
       ${kws.map(k=>`<tr>
         <td><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.keyword)}</a></td>
+        <td class="num" title="${esc(k.demand_basis||"")}">${k.demand_index!=null&&k.demand_band?`<b>${k.demand_index}</b> <span class="dband d-${esc((k.demand_band||"").replace(" ","-"))}">${esc(k.demand_band)}</span>`:"—"}</td>
         <td class="num">${fmt(k.total_results)}</td><td class="num">${Math.round(k.median_reviews)}</td>
         <td class="num">${Math.round(k.pct_under_100)}%</td><td class="num">${Math.round(k.ku_share)}%</td>
         <td class="num">${k.phrase_in_titles}</td>
@@ -621,6 +644,14 @@ function renderResearch(job){
         <td class="num">${fmt(b.bsr)}</td><td class="num">${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
         <td class="num">${b.est_sales_per_day??"—"}</td><td class="num"><b>${cur}${fmt(Math.round(b.est_monthly_royalty))}</b></td>
         <td class="num">${esc(b.publication_date||"?")}</td></tr>`).join("")}</table></div>`:""}
+    ${r.category_intel&&(r.category_intel.picks||[]).length?`<h3>Category picks <span class="small">(where the niche lives, and what a badge costs)</span></h3>
+      <div class="catpicks">${r.category_intel.picks.map((p,i)=>`
+        <div class="catpick">
+          <div class="cp-head"><b>${esc(p.category)}</b>${p.exact?'<span class="badge b-ok">exact read</span>':'<span class="badge">floor</span>'}</div>
+          <div class="cp-bar mono">${p.entry_sales_day!=null?`${p.entry_sales_day}+ sales/day for #1`:"entry bar unknown"}</div>
+          <div class="small">${esc(p.why)}</div>
+        </div>`).join("")}</div>
+      <p class="small">${esc(r.category_intel.note||"")}</p>`:""}
     ${(r.title_gaps||[]).length?`<h3>Title gaps</h3><div>${r.title_gaps.map(g=>`<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>`:""}
     ${(r.title_ngrams||[]).length?`<h3>What page-1 titles are made of</h3><div>${r.title_ngrams.map(([g,c])=>`<span class="tagchip">${esc(g)} ×${c}</span>`).join("")}</div>`:""}
     ${(r.complaints||[]).length?`<h3>What buyers complain about</h3>${r.complaints.slice(0,10).map(c=>`<div class="complaint">
@@ -746,7 +777,8 @@ function renderTeardown(job){
   const r = job.result, rows = r.rows || [];
   const cell = v => v == null || v === "" ? '<span class="na">—</span>' : esc(String(v));
   $("#main").innerHTML = `
-    <div class="pagehead"><h2>Reverse-ASIN teardown <span class="small">· ${rows.length} book(s) · ${esc(r.generated_at)}</span></h2></div>
+    <div class="pagehead"><h2>Reverse-ASIN teardown <span class="small">· ${rows.length} book(s) · ${esc(r.generated_at)}</span></h2>
+      ${exportBtn(job.id,"teardown","Export CSV")}</div>
     ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
     ${rows.map(b => {
       const c = b.crowdedness || {}, tag = (c.verdict||"VERIFY").split(" ")[0];
@@ -804,6 +836,7 @@ function renderDiscovery(job){
   $("#main").innerHTML = `
     <div class="pagehead">
       <h2>Discovery <span class="small">· last ${esc(r.window)} · ${(r.categories||[]).length} categories · ${esc(r.generated_at)}</span></h2>
+      ${(r.cards||[]).length?exportBtn(job.id,"cards","Export CSV"):""}
     </div>
     ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
     ${!cards.length ? `<div class="nodata">No opportunities cleared the bar in this window.
