@@ -38,7 +38,10 @@ PROMPT = """You turn messy public signals into book concepts for a KDP publisher
 
 Rules:
 - Output ONLY a JSON array. No prose, no code fences.
-- Each element: {"concept": str, "audience": str, "category": str, "signal_indexes": [int]}
+- Each element: {"concept": str, "search_phrase": str, "audience": str,
+  "category": str, "signal_indexes": [int]}
+- "search_phrase" is 2-6 words a buyer would type into Amazon to find this
+  book — e.g. "adhd parenting guide". Lowercase, no punctuation.
 - "concept" is a specific book someone could actually write, phrased as a
   subject, not a title. Good: "ADHD parenting guide for newly diagnosed kids".
   Bad: "ADHD" (too broad), "The ADHD Bible" (a title, not a subject).
@@ -50,6 +53,36 @@ Rules:
 
 Signals:
 """
+
+
+_FILLER = re.compile(
+    r"^(a|an|the|comprehensive|complete|practical|holistic|engaging|ultimate|"
+    r"essential|effective|guide to|guide for|strategies for|strategies to|"
+    r"tips for|ways to|how to)\s+", re.I)
+
+
+def derive_search_phrase(concept: str, max_len: int = 60) -> str:
+    """A short, typeable stand-in when the model gave no search_phrase.
+
+    Concepts are descriptions; Amazon's search box wants what a buyer types.
+    Validating a 150-character sentence returned nothing, and handing it to
+    the research form as a seed blew the API's length limit.
+    """
+    text = " ".join((concept or "").split(",")[0].split())
+    for _ in range(4):
+        stripped = _FILLER.sub("", text)
+        if stripped == text:
+            break
+        text = stripped
+    words = text.split()
+    # keep whole words up to the cap; six words is plenty for a search
+    phrase = ""
+    for word in words[:8]:
+        candidate = (phrase + " " + word).strip()
+        if len(candidate) > max_len:
+            break
+        phrase = candidate
+    return (phrase or text[:max_len]).strip().rstrip(",.;:").lower()
 
 
 def has_book_intent(signal: dict[str, Any]) -> bool:
@@ -101,6 +134,7 @@ def _heuristic(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
         longest = max((signals[i].get("text") or "" for i in indexes), key=len)
         out.append({
             "concept": longest[:120],
+            "search_phrase": derive_search_phrase(longest),
             "audience": "general",
             "category": signals[indexes[0]].get("category") or "general",
             "evidence": evidence,
@@ -215,8 +249,14 @@ def extract_with_report(signals: list[dict[str, Any]],
             evidence = _evidence_from(batch, entry.get("signal_indexes") or [])
             if not evidence:
                 continue  # a concept without receipts is not a concept
+            concept_text = str(entry["concept"])[:160]
+            # Models sometimes join alternatives with commas despite the
+            # prompt; Amazon gets exactly one phrase.
+            model_phrase = str(entry.get("search_phrase") or "").split(",")[0]
+            model_phrase = " ".join(model_phrase.split())[:60]
             concepts.append({
-                "concept": str(entry["concept"])[:160],
+                "concept": concept_text,
+                "search_phrase": model_phrase.lower() or derive_search_phrase(concept_text),
                 "audience": str(entry.get("audience") or "general")[:60],
                 "category": str(entry.get("category") or "general")[:40],
                 "evidence": evidence,

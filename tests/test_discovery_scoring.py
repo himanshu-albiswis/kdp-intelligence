@@ -247,3 +247,86 @@ class TestTruncatedReplyRecovery:
     def test_intact_json_is_unaffected(self):
         good = '[{"concept":"X","audience":"a","category":"health","signal_indexes":[0]}]'
         assert len(concepts._parse_llm(good)) == 1
+
+
+class TestSearchPhrase:
+    """Concepts are descriptions; Amazon wants a phrase a buyer would type.
+
+    Validating "Practical strategies for managing ADHD symptoms and improving
+    daily life, including study habits, sleep, dopamine regulation, and
+    medication considerations" against Amazon search returns nothing — and
+    handing it to the research form as a seed exceeded the API's 120-char
+    limit, which surfaced as an [object Object] alert. Every concept now
+    carries a short search_phrase: the model's when it gives one, a derived
+    fallback when it does not.
+    """
+
+    def test_the_model_provided_phrase_is_used(self):
+        signals = [{"text": "is there a book about adhd for newly diagnosed kids",
+                    "source": "reddit", "intensity": 300, "url": "https://r/x",
+                    "category": "health", "asking": True}]
+
+        def llm(prompt):
+            return ('[{"concept":"ADHD parenting guide for newly diagnosed kids",'
+                    '"search_phrase":"adhd parenting guide",'
+                    '"audience":"parents","category":"health","signal_indexes":[0]}]')
+
+        out = concepts.extract(signals, llm=llm)
+        assert out[0]["search_phrase"] == "adhd parenting guide"
+
+    def test_a_missing_phrase_falls_back_to_a_derivation(self):
+        signals = [{"text": "is there a book about adhd for newly diagnosed kids",
+                    "source": "reddit", "intensity": 300, "url": "https://r/x",
+                    "category": "health", "asking": True}]
+
+        def llm(prompt):
+            return ('[{"concept":"ADHD parenting guide for newly diagnosed kids",'
+                    '"audience":"parents","category":"health","signal_indexes":[0]}]')
+
+        out = concepts.extract(signals, llm=llm)
+        assert out[0]["search_phrase"], "no concept may ship without one"
+        assert len(out[0]["search_phrase"]) <= 60
+
+    def test_heuristic_concepts_also_carry_one(self):
+        signals = [{"text": "how to meal prep on a budget", "source": "youtube",
+                    "intensity": 0.9, "url": "https://y/z", "category": "cooking"}]
+        out = concepts.extract(signals, llm=None)
+        assert all(c.get("search_phrase") for c in out)
+
+    def test_derivation_shortens_a_long_description(self):
+        phrase = concepts.derive_search_phrase(
+            "Practical strategies for managing ADHD symptoms and improving daily "
+            "life, including study habits, sleep, dopamine regulation, and "
+            "medication considerations")
+        assert 0 < len(phrase) <= 60
+        assert "adhd" in phrase.lower()
+
+    def test_derivation_strips_filler_words_from_the_front(self):
+        phrase = concepts.derive_search_phrase(
+            "A comprehensive guide to understanding menopause nutrition")
+        assert not phrase.lower().startswith(("a ", "the ", "comprehensive"))
+
+    def test_a_short_concept_passes_through_unchanged(self):
+        assert concepts.derive_search_phrase("adhd books for adults") == "adhd books for adults"
+
+
+class TestSearchPhraseIsOnePhrase:
+    """A live run got 'anxiety relief guide, how to worry less' — the model
+    joined two phrases despite the prompt. Amazon gets exactly one."""
+
+    def test_a_comma_joined_reply_keeps_only_the_first_phrase(self):
+        signals = [{"text": "is there a book about anxiety relief", "source": "reddit",
+                    "intensity": 300, "url": "https://r/x", "category": "health",
+                    "asking": True}]
+
+        def llm(prompt):
+            return ('[{"concept":"Anxiety relief for adults",'
+                    '"search_phrase":"anxiety relief guide, how to worry less",'
+                    '"audience":"a","category":"health","signal_indexes":[0]}]')
+
+        out = concepts.extract(signals, llm=llm)
+        assert out[0]["search_phrase"] == "anxiety relief guide"
+
+    def test_derivation_also_stops_at_the_first_comma(self):
+        assert "," not in concepts.derive_search_phrase(
+            "menopause nutrition, hormone balance, and weight management")

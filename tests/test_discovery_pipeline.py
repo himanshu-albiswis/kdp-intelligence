@@ -135,3 +135,47 @@ class TestCostControl:
             validator=counting_validator, llm=None)
         assert asked == []
         assert out["cards"] == []
+
+
+class TestAmazonSeesSearchPhrasesNotDescriptions:
+    """Stage 4 searched Amazon for the full concept sentence and got nothing
+    back for every card in a live run; the hand-off button then submitted the
+    same sentence as a research seed and hit the API's 120-char limit."""
+
+    def test_the_validator_receives_the_short_phrase(self):
+        long_concept = ("Practical strategies for managing ADHD symptoms and "
+                        "improving daily life including study habits and sleep "
+                        "hygiene for adults")
+        asked = []
+
+        def spy(phrases):
+            asked.extend(phrases)
+            return fake_validator(phrases)
+
+        def llm(prompt):
+            return (f'[{{"concept":"{long_concept}",'
+                    f'"search_phrase":"adhd strategies for adults",'
+                    f'"audience":"adults","category":"health","signal_indexes":[0]}}]')
+
+        out = dpipe.run_discovery(
+            {"window": "7d", "validate_top": 3}, PROGRESS,
+            collectors_map={"reddit_panel": collector_ok(
+                "reddit_panel", [sig("is there a book about adhd strategies")])},
+            validator=spy, llm=llm)
+        assert asked == ["adhd strategies for adults"]
+        assert all(len(p) <= 60 for p in asked)
+
+    def test_the_validate_button_gets_the_phrase_not_the_sentence(self):
+        def llm(prompt):
+            return ('[{"concept":"A very long descriptive concept about many things",'
+                    '"search_phrase":"adhd focus guide",'
+                    '"audience":"a","category":"health","signal_indexes":[0]}]')
+
+        out = dpipe.run_discovery(
+            {"window": "7d"}, PROGRESS,
+            collectors_map={"reddit_panel": collector_ok(
+                "reddit_panel", [sig("is there a book about adhd focus")])},
+            validator=fake_validator, llm=llm)
+        card = out["cards"][0]
+        assert card["validate_phrase"] == "adhd focus guide"
+        assert len(card["validate_phrase"]) <= 120

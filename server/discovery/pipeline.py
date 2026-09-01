@@ -171,7 +171,12 @@ def run_discovery(params: dict[str, Any], progress: ProgressFn,
     # --- Stage 4 ---------------------------------------------------------
     progress("amazon", 68,
              f"Checking {len(shortlist)} concepts against the live Amazon shelf")
-    phrases = [c["concept"] for c in shortlist]
+    # Search Amazon for what a buyer would type, not the concept sentence —
+    # a 150-character description returns no usable results page.
+    for concept in shortlist:
+        concept.setdefault("search_phrase",
+                           concepts_mod.derive_search_phrase(concept["concept"]))
+    phrases = [c["search_phrase"] for c in shortlist]
     try:
         supply = (validator or _amazon_validator)(phrases)
     except Exception as exc:  # noqa: BLE001
@@ -182,10 +187,11 @@ def run_discovery(params: dict[str, Any], progress: ProgressFn,
     progress("cards", 88, "Ranking opportunities")
     cards: list[dict[str, Any]] = []
     for concept in shortlist:
-        metrics = supply.get(concept["concept"], {}) or {}
+        metrics = supply.get(concept["search_phrase"], {}) or {}
         card_gap = scoring.gap(concept["demand"], metrics)
         cards.append({
             "concept": concept["concept"],
+            "search_phrase": concept["search_phrase"],
             "audience": concept.get("audience"),
             "category": concept.get("category"),
             "method": concept.get("method"),
@@ -195,8 +201,10 @@ def run_discovery(params: dict[str, Any], progress: ProgressFn,
             "evidence": concept["evidence"][:6],
             "gap": card_gap,
             "amazon_url": metrics.get("url"),
-            # what the "Run full validation" button hands to the research pipeline
-            "validate_phrase": concept["concept"],
+            # what the "Run full validation" button hands to the research
+            # pipeline — the typeable phrase, never the concept sentence,
+            # which exceeded the research API's seed length in a live run
+            "validate_phrase": concept["search_phrase"],
         })
     cards.sort(key=lambda c: (c["gap"]["score"] is None, -(c["gap"]["score"] or 0)))
 
