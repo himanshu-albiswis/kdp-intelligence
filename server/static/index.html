@@ -380,23 +380,12 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     height:32px;padding:0 var(--s3);font-size:12px;display:inline-flex;align-items:center;
     border-radius:var(--r-ctl);text-decoration:none;font-weight:600}
   .ghostmini:hover{border-color:var(--accent)}
-  .userslot{margin-left:auto;display:flex;align-items:center}
-  .userslot:empty{display:none}
-  header:has(.userslot:not(:empty)) nav{margin-left:0}
-  .signin{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
-    background:color-mix(in srgb,var(--bg) 55%,transparent);
-    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-  .signin-card{background:var(--glass-strong);border:1px solid var(--stroke-strong);border-radius:var(--r-card);
-    padding:var(--s6);max-width:380px;width:90%;box-shadow:var(--shadow),inset 0 1px 0 var(--glass-inset);
-    display:flex;flex-direction:column;gap:var(--s3)}
-  .signin-card h2{margin:0}
 </style>
 </head>
 <body>
 <div class="aurora" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
 <header>
   <h1>📚 KDP Niche Intelligence</h1>
-  <div id="userSlot" class="userslot"></div>
   <nav>
     <button data-tab="research" class="on">Niche Research</button>
     <button data-tab="discover">Discovery</button>
@@ -405,15 +394,6 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     <button data-tab="calc">Royalty Calculator</button>
   </nav>
 </header>
-<div id="signinOverlay" class="signin" hidden>
-  <div class="signin-card">
-    <h2>Sign in</h2>
-    <p class="small">This workspace is protected. Sign in to run research,
-      discovery and teardowns.</p>
-    <button class="btn primary" id="signinBtn" type="button">Sign in</button>
-    <div id="signinMount"></div>
-  </div>
-</div>
 <div class="layout">
 <aside>
   <div id="pane-research">
@@ -523,12 +503,6 @@ document.querySelectorAll(".mkts").forEach(sel => sel.innerHTML = MKTS.map(m=>`<
 let activeJob = null, pollTimer = null, sortKey = "opportunity", sortDir = -1, tab = "research";
 
 const api = async (path, opts) => {
-  // Clerk session tokens are short-lived; fetch a fresh one per request.
-  if (window.__clerk && window.__clerk.session) {
-    const token = await window.__clerk.session.getToken();
-    opts = opts || {};
-    opts.headers = Object.assign({}, opts.headers, {Authorization: "Bearer " + token});
-  }
   const r = await fetch("/api"+path, opts);
   if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
   return r.json();
@@ -957,73 +931,7 @@ $("#calcForm").addEventListener("submit", async e => {
     </div>`;
   } catch(err){ alert(err.message); }
 });
-/* ---------- boot ----------
-   Auth first, then data. /api/config is served unauthenticated so the
-   sign-in screen can exist; everything else waits for a session when the
-   server says Clerk is on. The secret key never reaches this file. */
-async function boot(){
-  let cfg = {auth_mode: "open"};
-  try { cfg = await (await fetch("/api/config")).json(); } catch (e) {}
-
-  if (cfg.auth_mode === "clerk" && cfg.clerk_publishable_key) {
-    let clerk;
-    try {
-      await new Promise((resolve, reject) => {
-        const tag = document.createElement("script");
-        tag.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
-        tag.crossOrigin = "anonymous";
-        // The CDN build self-initialises on load and reads the publishable
-        // key from its own script tag; omitting this threw "Missing
-        // publishableKey" before any of our code ran.
-        tag.setAttribute("data-clerk-publishable-key", cfg.clerk_publishable_key);
-        tag.onload = resolve; tag.onerror = reject;
-        document.head.appendChild(tag);
-      });
-      // window.Clerk is a ready instance under the data-attribute pattern,
-      // but older builds expose a class — support both.
-      clerk = (typeof window.Clerk === "function")
-        ? new window.Clerk(cfg.clerk_publishable_key)
-        : window.Clerk;
-      await clerk.load();
-    } catch (err) {
-      // Auth is on server-side, so the API already refuses requests; the page
-      // must say why instead of sitting dead behind an invisible wall.
-      const overlay = $("#signinOverlay");
-      overlay.hidden = false;
-      overlay.querySelector(".small").textContent =
-        "Sign-in could not start: the Clerk script failed to load or the " +
-        "publishable key is wrong. Check CLERK_PUBLISHABLE_KEY and reload.";
-      $("#signinBtn").hidden = true;
-      return;
-    }
-    window.__clerk = clerk;
-
-    const overlay = $("#signinOverlay");
-    const sync = () => {
-      const signedIn = !!clerk.user;
-      overlay.hidden = signedIn;
-      if (signedIn) {
-        clerk.mountUserButton($("#userSlot"));
-        startData();
-      }
-    };
-    $("#signinBtn").onclick = () => clerk.openSignIn({});
-    clerk.addListener(sync);
-    sync();
-    if (!clerk.user) return;   // startData runs from sync() after sign-in
-  } else {
-    startData();
-  }
-}
-
-let dataStarted = false;
-function startData(){
-  if (dataStarted) return;
-  dataStarted = true;
-  refreshJobs(); setInterval(refreshJobs, 5000);
-}
-
-boot();
+refreshJobs(); setInterval(refreshJobs, 5000);
 </script>
 </body>
 </html>

@@ -13,3 +13,4 @@ proxies.txt
 
 # local secrets - never commit
 .env
+.env.*

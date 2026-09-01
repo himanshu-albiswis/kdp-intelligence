@@ -27,22 +27,9 @@ The job database persists in the `kdp-data` volume.
 
 Any platform that runs a Dockerfile works as-is. Two production notes:
 
-- **Auth.** Two options, decided by what you configure:
-  - **Clerk (recommended for anything client-facing).** Create an application
-    at [dashboard.clerk.com](https://dashboard.clerk.com), then add to `.env`:
-
-    ```bash
-    CLERK_PUBLISHABLE_KEY=pk_...
-    CLERK_SECRET_KEY=sk_...
-    ```
-
-    Every `/api` route then requires a signed-in session (`/api/health` and
-    `/api/config` stay open for probes and the sign-in screen). The page
-    shows a sign-in overlay and a user menu; session tokens are verified
-    server-side against Clerk's JWKS. The secret key never reaches the
-    browser — `/api/config` exposes only the publishable key.
-  - **`KDP_API_KEY`** (legacy): dashboard read-open, job creation/deletion
-    requires the `X-API-Key` header. Ignored when Clerk is configured.
+- **Set `KDP_API_KEY`** (env var) so only you can start jobs; the dashboard
+  is read-open, job creation then requires the `X-API-Key` header (add it in
+  the browser via an extension, or front the app with basic auth).
 - **Run from a residential IP or configure proxies.** Datacenter IPs
   (all cloud hosts) get blocked by Amazon quickly. Paste a rotating
   residential proxy pool into the form's proxies field, or bake it in by
