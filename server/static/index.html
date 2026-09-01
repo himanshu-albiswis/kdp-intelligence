@@ -972,10 +972,18 @@ async function boot(){
         const tag = document.createElement("script");
         tag.src = "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js";
         tag.crossOrigin = "anonymous";
+        // The CDN build self-initialises on load and reads the publishable
+        // key from its own script tag; omitting this threw "Missing
+        // publishableKey" before any of our code ran.
+        tag.setAttribute("data-clerk-publishable-key", cfg.clerk_publishable_key);
         tag.onload = resolve; tag.onerror = reject;
         document.head.appendChild(tag);
       });
-      clerk = new window.Clerk(cfg.clerk_publishable_key);
+      // window.Clerk is a ready instance under the data-attribute pattern,
+      // but older builds expose a class — support both.
+      clerk = (typeof window.Clerk === "function")
+        ? new window.Clerk(cfg.clerk_publishable_key)
+        : window.Clerk;
       await clerk.load();
     } catch (err) {
       // Auth is on server-side, so the API already refuses requests; the page
