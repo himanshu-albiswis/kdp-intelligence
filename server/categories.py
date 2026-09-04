@@ -26,7 +26,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import kdp_estimates  # noqa: E402
 
 # "#2 in Latin American Cooking" — as rendered in tag-stripped detail text.
-_RANK = re.compile(r"#([\d,]+)\s+in\s+([A-Za-z][A-Za-z'&,\- ]{2,60}?)(?=\s+#|\s*\(|$)")
+# Terminators: the next rank, a parenthesis, the next labelled section
+# ("Customer Reviews:"), or end of text. Amazon runs sections together.
+_RANK = re.compile(
+    r"#([\d,]+)\s+in\s+([A-Za-z][A-Za-z'&,\- ]{2,60}?)"
+    r"(?=\s+#|\s*\(|\s+Customer Reviews|$)")
 
 
 def extract_category_ranks(detail_text: str) -> list[dict[str, Any]]:
@@ -86,8 +90,16 @@ def category_intel(books: list[dict[str, Any]], marketplace: str = "us",
             shelf["read"] = (f"the #{rank} book sells {sales_text}, so #1 takes "
                              f"at least that")
 
+    # Presence first, then price of the badge. A category one book wandered
+    # into can look cheap to badge and still be the wrong shelf; a live scan
+    # for an air-fryer niche recommended "Juicer Recipes" on that basis.
+    # An exact rank-1 witness is hard evidence of the badge's cost and is
+    # never demoted; the presence rule applies to floors read off deeper ranks.
+    strongest = max(s["books_observed"] for s in shelves.values())
     ordered = sorted(shelves.values(),
-                     key=lambda s: (s["entry_sales_day"] is None,
+                     key=lambda s: (not s["exact"] and s["books_observed"] < min(2, strongest),
+                                    s["entry_sales_day"] is None,
+                                    not s["exact"],
                                     s["entry_sales_day"] or 0,
                                     -s["books_observed"]))
 

@@ -97,3 +97,57 @@ class TestCategoryIntel:
         cats = {c["category"]: c for c in out["categories"]}
         assert cats["X"]["books_observed"] == 1
         assert cats["X"]["entry_sales_day"] is None
+
+
+class TestPicksPreferCategoriesTheNicheActuallyLivesIn:
+    """A live scan for an air-fryer niche recommended "Juicer Recipes": one
+    deep-tail book sat there at rank #40, making the badge look cheap. A
+    category a single book wandered into is not where the niche lives."""
+
+    def _intel(self):
+        return categories.category_intel([
+            book("B1", bsr=30_000, ranks=[{"rank": 3, "category": "Air Fryer Recipes"}]),
+            book("B2", bsr=45_000, ranks=[{"rank": 6, "category": "Air Fryer Recipes"}]),
+            book("B3", bsr=50_000, ranks=[{"rank": 8, "category": "Air Fryer Recipes"}]),
+            book("B4", bsr=900_000, ranks=[{"rank": 40, "category": "Juicer Recipes"}]),
+        ], marketplace="us")
+
+    def test_a_category_seen_once_does_not_outrank_one_seen_thrice(self):
+        picks = [p["category"] for p in self._intel()["picks"]]
+        assert picks[0] == "Air Fryer Recipes"
+
+    def test_singletons_are_still_listed_when_nothing_else_exists(self):
+        out = categories.category_intel(
+            [book("B4", bsr=900_000, ranks=[{"rank": 40, "category": "Juicer Recipes"}])],
+            marketplace="us")
+        assert out["picks"][0]["category"] == "Juicer Recipes"
+
+    def test_picks_explain_presence(self):
+        assert "3 niche book" in self._intel()["picks"][0]["why"]
+
+
+class TestRealDetailTextTerminators:
+    """Amazon's detail text runs straight into the next section. Captured
+    live: '#26 in Fryer Recipes Customer Reviews: 4.8 4.8 out of 5 stars'.
+    The dashboard's copy of the regex leaked 'Customer Reviews' into the
+    category name; this module's version dropped the entry entirely."""
+
+    DETAIL = ("Best Sellers Rank: #32,606 in Kindle Store ( See Top 100 in Kindle Store ) "
+              "#2 in Latin American Cooking #5 in Latin American Cooking, Food & Wine "
+              "#26 in Fryer Recipes Customer Reviews: 4.8 4.8 out of 5 stars (491)")
+
+    def test_the_last_category_is_kept_and_clean(self):
+        names = [r["category"] for r in categories.extract_category_ranks(self.DETAIL)]
+        assert "Fryer Recipes" in names
+        assert not any("Customer Reviews" in n for n in names)
+
+    def test_all_three_shelves_are_read(self):
+        assert len(categories.extract_category_ranks(self.DETAIL)) == 3
+
+    def test_the_dashboard_uses_the_same_parser(self):
+        # The dashboard imports the flat module while tests import server.*,
+        # so identity differs; origin and behaviour are what matter.
+        import kdp_intel_dashboard as dash
+        assert dash.extract_category_ranks.__module__.endswith("categories")
+        assert (dash.extract_category_ranks(self.DETAIL)
+                == categories.extract_category_ranks(self.DETAIL))

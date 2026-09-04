@@ -65,6 +65,7 @@ from kdp_niche_validator import Book, KDPNicheSpider  # noqa: E402
 import kdp_estimates  # noqa: E402
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "server"))
 import product_signals  # noqa: E402
+from categories import extract_category_ranks  # noqa: E402
 
 from scrapling.fetchers import FetcherSession, ProxyRotator  # noqa: E402
 from scrapling.spiders import Request, Response, Spider  # noqa: E402
@@ -175,15 +176,11 @@ class DeepDiveSpider(Spider):
         bsr_match = re.search(r"Best Sellers Rank[:\s#]*([\d,]+)", detail)
         bsr = _to_count(bsr_match.group(1)) if bsr_match else None
 
-        category_rank = ""
-        category_ranks: list[dict] = []
-        for rank, cat in re.findall(r"#([\d,]+) in ([A-Za-z'&, -]+)", detail):
-            cat = cat.strip().rstrip(",")
-            if cat.split()[0] in ("Kindle", "Books"):  # skip the store-wide ranks
-                continue
-            category_ranks.append({"rank": int(rank.replace(",", "")), "category": cat[:60]})
-            if not category_rank:
-                category_rank = f"#{rank} in {cat[:40]}"
+        # One parser for shelf ranks (server/categories.py); a second copy here
+        # had no terminator and leaked "Customer Reviews" into category names.
+        category_ranks: list[dict] = extract_category_ranks(detail)
+        category_rank = (f"#{category_ranks[0]['rank']} in {category_ranks[0]['category'][:40]}"
+                         if category_ranks else "")
 
         pub_date_iso = None
         date_match = re.search(r"Publication date[^A-Za-z0-9]*([A-Za-z]+ \d{1,2}, \d{4})", detail)

@@ -693,7 +693,7 @@ function renderResearch(job){
     ${money.length?`<h3>Money proof (BSR → est. royalties)</h3><div class="tablewrap"><table>
       <tr><th>Book</th><th>BSR</th><th>Price</th><th>Sales/day</th><th>Royalty/mo</th><th>Published</th></tr>
       ${money.map(b=>`<tr><td><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc((b.title||"").slice(0,64))}</a></td>
-        <td class="num">${fmt(b.bsr)}</td><td class="num">${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
+        <td class="num">${fmt(b.bsr)}</td><td class="num">${b.price!=null&&r.currency_ok!==false?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU":"—")}</td>
         <td class="num">${b.est_sales_per_day??"—"}</td><td class="num"><b>${cur}${fmt(Math.round(b.est_monthly_royalty))}</b></td>
         <td class="num">${esc(b.publication_date||"?")}</td></tr>`).join("")}</table></div>`:""}
     ${r.category_intel&&(r.category_intel.picks||[]).length?`<h3>Category picks <span class="small">(where the niche lives, and what a badge costs)</span></h3>
@@ -728,7 +728,7 @@ function renderResearch(job){
       <a class="book" href="${esc(b.url)}" target="_blank" rel="noopener">
         ${b.image_url?`<img loading="lazy" src="${esc(b.image_url)}" alt="">`:'<div style="width:50px;height:74px"></div>'}
         <div><div class="t">${esc((b.title||"").slice(0,72))}</div>
-        <div class="m">${b.kindle_unlimited?'<span class="ku">KU</span> ':''}${b.price!=null?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU only":"—")} · ${b.rating??"—"}★ · ${fmt(b.reviews)} rev</div></div></a>`).join("")}</div>`:""}`;
+        <div class="m">${b.kindle_unlimited?'<span class="ku">KU</span> ':''}${b.price!=null&&r.currency_ok!==false?cur+b.price.toFixed(2):(b.kindle_unlimited?"KU only":"—")} · ${b.rating??"—"}★ · ${fmt(b.reviews)} rev</div></div></a>`).join("")}</div>`:""}`;
 }
 window.setSort = k => { sortDir = (sortKey===k)?-sortDir:-1; sortKey=k; if(activeJob) openJob(activeJob); };
 

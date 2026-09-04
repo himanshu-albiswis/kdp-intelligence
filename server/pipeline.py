@@ -208,7 +208,8 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
             "avg_buy_price": (round(sum(priced) / len(priced), 2)
                               if priced and currency_ok else None),
             "median_reviews": statistics.median([b.reviews for b in books]) if books else None,
-            "royalty_pool_month": round(sum(b.est_monthly_royalty or 0 for b in intel), 2),
+            "royalty_pool_month": (round(sum(b.est_monthly_royalty or 0 for b in intel), 2)
+                                   if currency_ok else None),
             "velocity_pct_90d": velocity["pct_90d"],
         },
         # Income as a band including KU page reads. The flat
@@ -223,7 +224,9 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
         ),
         "keywords": [m.model_dump() for m in keywords],
         "books": [b.model_dump() for b in books],
-        "book_intel": [b.model_dump() for b in intel],
+        # Per-book royalty obeys the same currency guard as the headline;
+        # a live scan once showed INR royalties under a "$" sign here.
+        "book_intel": kdp_estimates.money_guard([b.model_dump() for b in intel], currency_ok),
         # Which shelves the niche actually lives on, and what each badge costs.
         "category_intel": categories_mod.category_intel(
             [b.model_dump() for b in intel], marketplace=marketplace, store=store_key),
@@ -233,7 +236,10 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
             [{"price": b.price, "bsr": b.bsr} for b in intel] or
             [{"price": b.price, "bsr": None} for b in books], currency_ok=currency_ok),
         "velocity": reviews_mod.shelf_velocity([b.model_dump() for b in intel]),
-        "praise": reviews_mod.praise_themes([s.model_dump() for s in praise]),
+        "praise": reviews_mod.praise_themes(
+            [s.model_dump() for s in praise],
+            exclude=f"{seed} {focus} " + " ".join(
+                reviews_mod.niche_vocabulary([b.title for b in books]))),
         "listing_benchmark": signals_mod.shelf_benchmark([b.model_dump() for b in intel]),
         "also_viewed": signals_mod.adjacency([b.model_dump() for b in intel]),
         "release_velocity": velocity,

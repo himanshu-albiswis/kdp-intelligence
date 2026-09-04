@@ -123,6 +123,12 @@ class CategoryStore:
                            "times_seen, updated_at) VALUES (?,?,?,?,?,0,?)",
                            (name, node, parent, depth, top_asin, self._now()))
 
+    def purge_polluted(self) -> int:
+        """Drop names the pre-terminator parser leaked section labels into."""
+        with self._db() as db:
+            cur = db.execute("DELETE FROM categories WHERE name LIKE '%Customer Reviews%'")
+            return cur.rowcount
+
     def count(self) -> int:
         with self._db() as db:
             return db.execute("SELECT COUNT(*) AS n FROM categories").fetchone()["n"]

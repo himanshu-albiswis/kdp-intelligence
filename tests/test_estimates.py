@@ -244,3 +244,23 @@ class TestCurrencyGuard:
         assert r["total_mid"] == 0.0
         assert r["confidence"] == "none"
         assert "currency" in r["basis"].lower()
+
+
+class TestMoneyGuard:
+    """Live scan on an Indian IP: the headline income was suppressed but the
+    money-proof table still showed '$1887.42' and '$2,636/mo' — INR figures
+    with a dollar sign. Per-book money must obey the same currency guard."""
+
+    rows = [{"asin": "A", "price": 1887.42, "est_sales_per_day": 0.13, "est_monthly_royalty": 2636.0},
+            {"asin": "B", "price": None, "est_sales_per_day": None, "est_monthly_royalty": None}]
+
+    def test_mismatched_currency_blanks_royalty_but_keeps_bsr_sales(self):
+        out = est.money_guard(self.rows, currency_ok=False)
+        assert out[0]["est_monthly_royalty"] is None
+        assert out[0]["est_sales_per_day"] == 0.13   # BSR-derived, currency-free
+        assert out[0]["money_suppressed"] is True
+
+    def test_matching_currency_passes_through(self):
+        out = est.money_guard(self.rows, currency_ok=True)
+        assert out[0]["est_monthly_royalty"] == 2636.0
+        assert "money_suppressed" not in out[0]

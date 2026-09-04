@@ -112,3 +112,14 @@ class TestCrawler:
             class R: status = 503; body = ""
             return R()
         assert category_db.crawl(store, fetch=fetch, root="154606011", max_pages=2) == 0
+
+
+class TestPurge:
+    def test_removes_names_polluted_by_the_old_parser(self, store):
+        store.record_observed([{"category": "Fryer Recipes Customer Reviews", "best_observed_rank": 26,
+                                "entry_sales_day": 4.6, "books_observed": 2},
+                               {"category": "Fryer Recipes", "best_observed_rank": 3,
+                                "entry_sales_day": 1.6, "books_observed": 2}], niche="x")
+        removed = store.purge_polluted()
+        assert removed == 1
+        assert [r["name"] for r in store.search("Fryer")] == ["Fryer Recipes"]

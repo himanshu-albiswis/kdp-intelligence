@@ -74,3 +74,70 @@ class TestPraiseMining:
         themes = reviews.praise_themes(self.praise)
         counts = [t["mentions"] for t in themes]
         assert counts == sorted(counts, reverse=True)
+
+
+class TestPraiseIgnoresTheNicheOwnWords:
+    """A live scan for "air fryer cookbook" returned praise themes of
+    'recipes' x35, 'fryer' x22, 'air fryer' x21 — the topic itself, not the
+    features buyers reward. Words from the seed are excluded from themes."""
+
+    praise = [
+        {"rating": 5, "body": "air fryer recipes that are easy to follow with beautiful photos"},
+        {"rating": 5, "body": "The air fryer cookbook has easy to follow recipes and great photos"},
+        {"rating": 4, "body": "Air fryer recipes, easy to follow, photos are beautiful"},
+    ]
+
+    def test_seed_words_never_become_themes(self):
+        themes = {t["theme"] for t in reviews.praise_themes(self.praise, exclude="air fryer cookbook recipes")}
+        assert "recipes" not in themes and "air fryer" not in themes and "fryer" not in themes
+
+    def test_real_features_still_surface(self):
+        themes = {t["theme"] for t in reviews.praise_themes(self.praise, exclude="air fryer cookbook recipes")}
+        assert any("easy to follow" in t for t in themes)
+        assert any("photos" in t for t in themes)
+
+    def test_a_phrase_mixing_seed_and_feature_words_keeps_the_feature(self):
+        themes = reviews.praise_themes(self.praise, exclude="air fryer")
+        assert all(t["theme"] not in ("air", "fryer", "air fryer") for t in themes)
+
+
+class TestNicheVocabulary:
+    """Words that appear across most page-1 titles are the niche's own
+    vocabulary ("recipes", "cookbook"), not praise. A live scan still ranked
+    'recipes' x36 first after excluding the seed, because the seed was
+    "air fryer cookbook" and every title says "recipes"."""
+
+    titles = ["Air Fryer Cookbook: 500 Recipes", "Easy Air Fryer Recipes for Two",
+              "The Complete Air Fryer Cookbook", "Air Fryer Recipes Made Simple",
+              "Crispy Air Fryer Meals: 75 Recipes"]
+
+    def test_words_in_most_titles_are_vocabulary(self):
+        vocab = reviews.niche_vocabulary(self.titles)
+        assert {"air", "fryer", "recipes"} <= vocab
+
+    def test_rare_title_words_are_not(self):
+        vocab = reviews.niche_vocabulary(self.titles)
+        assert "crispy" not in vocab and "complete" not in vocab
+
+    def test_empty_titles_yield_an_empty_set(self):
+        assert reviews.niche_vocabulary([]) == set()
+
+
+class TestPraiseQuality:
+    """Live praise after seed exclusion read: 'recipe' x12, 'simple', 'meals',
+    'make', 'every', 'most' — a plural/singular leak and filler verbs."""
+
+    praise = [{"rating": 5, "body": f"Great recipe {i}, so easy to follow and quick to make every night"}
+              for i in range(6)] + [{"rating": 5, "body": "photos are beautiful, easy to follow"}]
+
+    def test_singular_of_an_excluded_plural_is_excluded_too(self):
+        themes = {t["theme"] for t in reviews.praise_themes(self.praise, exclude="recipes")}
+        assert "recipe" not in themes
+
+    def test_filler_words_are_not_themes(self):
+        themes = {t["theme"] for t in reviews.praise_themes(self.praise)}
+        assert not {"every", "most", "make", "night"} & themes
+
+    def test_a_phrase_outranks_a_single_word_of_similar_count(self):
+        themes = reviews.praise_themes(self.praise)
+        assert themes[0]["theme"] == "easy to follow"

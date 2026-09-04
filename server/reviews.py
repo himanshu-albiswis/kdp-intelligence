@@ -20,6 +20,11 @@ STOP = {
     "really", "just", "have", "has", "had", "be", "been", "as", "at", "by",
     "from", "book", "books", "one", "all", "also", "can", "will", "would",
     "loved", "love", "great", "good", "nice", "amazing", "excellent",
+    "every", "most", "make", "made", "makes", "use", "used", "using", "get", "got",
+    "like", "well", "much", "many", "some", "lot", "lots", "time", "times", "thing",
+    "things", "night", "day", "days", "way", "even", "than", "then", "when", "what",
+    "which", "who", "how", "there", "here", "too", "into", "out", "up", "down",
+    "more", "other", "only", "new", "own", "far", "quick", "found",
 }
 
 VELOCITY_BANDS = [(20.0, "surging"), (5.0, "steady"), (1.0, "slow"), (0.0, "stale")]
@@ -60,6 +65,19 @@ def shelf_velocity(intel: list[dict[str, Any]], today: Optional[date] = None) ->
     return {"books_measured": len(rates), "median_per_month": mid, "band": band_for(mid)}
 
 
+def niche_vocabulary(titles: list[str], share: float = 0.4) -> set[str]:
+    """Words present in at least `share` of page-1 titles — the genre's own
+    words, which reviews repeat without praising anything."""
+    if not titles:
+        return set()
+    counts: Counter = Counter()
+    for title in titles:
+        for word in set(re.findall(r"[a-z']+", (title or "").lower())):
+            if word not in STOP and len(word) > 2:
+                counts[word] += 1
+    return {w for w, n in counts.items() if n / len(titles) >= share}
+
+
 def _phrases(text: str) -> set[str]:
     """Content words and 2-3 word phrases, one set per review.
 
@@ -82,19 +100,28 @@ def _phrases(text: str) -> set[str]:
     return found
 
 
-def praise_themes(snippets: list[dict[str, Any]], limit: int = 8) -> list[dict[str, Any]]:
+def praise_themes(snippets: list[dict[str, Any]], limit: int = 8,
+                  exclude: str = "") -> list[dict[str, Any]]:
     """What 4-5 star reviews keep saying — phrases repeated across reviews.
 
     Counting each phrase once per review (not per occurrence) means a theme
     ranks by how many buyers raised it, not how often one buyer repeated it.
+    `exclude` is the niche's own words: a scan for "air fryer cookbook"
+    surfaced 'recipes' and 'air fryer' as its top praise, which is the topic
+    restated, not a feature buyers reward.
     """
     praise = [s for s in snippets if (s.get("rating") or 0) >= 4 and s.get("body")]
     if not praise:
         return []
+    excluded = set(re.findall(r"[a-z']+", (exclude or "").lower()))
+    # "recipes" excluded must exclude "recipe" too
+    excluded |= {w[:-1] for w in excluded if w.endswith("s")} | {w + "s" for w in excluded}
     counts: Counter = Counter()
     example: dict[str, str] = {}
     for snippet in praise:
         for phrase in _phrases(snippet["body"]):
+            if all(w in excluded or w in STOP for w in phrase.split()):
+                continue
             counts[phrase] += 1
             example.setdefault(phrase, snippet["body"][:160])
 
@@ -106,5 +133,8 @@ def praise_themes(snippets: list[dict[str, Any]], limit: int = 8) -> list[dict[s
         if any(theme["theme"] in k["theme"] and theme["mentions"] == k["mentions"] for k in kept):
             continue
         kept.append(theme)
-    kept.sort(key=lambda t: (-t["mentions"], -len(t["theme"])))
+    # A phrase names a feature; a lone word usually names the genre. Boost
+    # phrases so "easy to follow" outranks "easy" at similar counts.
+    kept.sort(key=lambda t: (-t["mentions"] * (1.0 if " " in t["theme"] else 0.6),
+                             -len(t["theme"])))
     return kept[:limit]

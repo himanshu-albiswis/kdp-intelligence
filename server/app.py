@@ -259,6 +259,7 @@ class TrendRequest(BaseModel):
 
 CATEGORY_STORE = CategoryStore(os.environ.get(
     "KDP_CATEGORY_DB", os.path.join(os.path.dirname(DB_PATH), "categories.db")))
+CATEGORY_STORE.purge_polluted()   # names leaked by an earlier parser version
 
 
 @app.post("/api/listing/check")

@@ -385,3 +385,16 @@ def demand_index(prefix_len: Optional[int], keyword_len: int,
                   f"character(s), at dropdown position {pos + 1}. This compares "
                   f"keywords against each other; it is not a volume estimate."),
     }
+
+
+def money_guard(rows: list[dict], currency_ok: bool) -> list[dict]:
+    """Apply the currency guard to per-book money.
+
+    Sales/day comes from BSR and is currency-free; royalty/month multiplies
+    it by a price, so when Amazon served a foreign currency the royalty is a
+    fiction and is blanked. The price itself stays (it is what was seen) and
+    the row is flagged so the UI can label it instead of prefixing a '$'.
+    """
+    if currency_ok:
+        return rows
+    return [{**row, "est_monthly_royalty": None, "money_suppressed": True} for row in rows]
