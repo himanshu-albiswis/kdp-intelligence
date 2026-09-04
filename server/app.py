@@ -418,9 +418,34 @@ def delete_research(job_id: str, x_api_key: Optional[str] = Header(default=None)
     return {"deleted": True}
 
 
+# The React frontend (web/) builds to web/dist; when that exists it is served
+# at / and /app, with the legacy single-file page kept at /legacy. Without a
+# build the legacy page stays at / so a bare checkout still works.
+WEB_DIST = os.path.join(os.path.dirname(SERVER_DIR), "web", "dist")
+LEGACY_INDEX = os.path.join(SERVER_DIR, "static", "index.html")
+
+
+def _spa_index() -> FileResponse:
+    built = os.path.join(WEB_DIST, "index.html")
+    return FileResponse(built if os.path.exists(built) else LEGACY_INDEX)
+
+
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(os.path.join(SERVER_DIR, "static", "index.html"))
+    return _spa_index()
 
 
+@app.get("/app")
+@app.get("/app/{path:path}")
+def spa(path: str = "") -> FileResponse:
+    return _spa_index()
+
+
+@app.get("/legacy")
+def legacy() -> FileResponse:
+    return FileResponse(LEGACY_INDEX)
+
+
+if os.path.isdir(os.path.join(WEB_DIST, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(WEB_DIST, "assets")), name="assets")
 app.mount("/static", StaticFiles(directory=os.path.join(SERVER_DIR, "static")), name="static")

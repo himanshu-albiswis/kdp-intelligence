@@ -137,3 +137,20 @@ keep them that way.
 Built on [Scrapling](https://github.com/D4Vinci/Scrapling) (BSD-3) by
 Karim Shoair — the adaptive scraping framework doing the heavy lifting
 (TLS impersonation, spider engine, blocked-request retry, proxy rotation).
+
+
+## Frontend
+
+The UI lives in `web/` (Vite, React, TypeScript, Tailwind v4, shadcn). The
+landing page is at `/` and the dashboard at `/app`; both are served by the
+FastAPI app from `web/dist` once built.
+
+```bash
+cd web && npm ci
+npm run dev      # http://localhost:5173, proxies /api to the server on :8000
+npm run build    # writes web/dist; the server picks it up on next start
+```
+
+shadcn components are added with `npx shadcn@latest add <name>` and land in
+`web/src/components/ui`, imported as `@/components/ui/<name>`. The original
+single-file page stays available at `/legacy`.

@@ -1,13 +1,16 @@
 # Deploying the KDP Niche Intelligence web app
 
 The web app wraps the three CLI tools with a FastAPI backend, a job queue,
-SQLite persistence, and a single-page dashboard. No frontend build step —
-deploy it anywhere Python or Docker runs.
+SQLite persistence, and a React dashboard built with Vite. Docker builds
+the frontend for you; a bare Python deploy needs one `npm run build` first
+(the server falls back to the legacy single-file page at `/legacy` when no
+build exists).
 
 ## Run locally
 
 ```bash
 pip install -r requirements.txt -r requirements-server.txt
+(cd web && npm ci && npm run build)   # once, and after frontend changes
 uvicorn app:app --app-dir server --host 0.0.0.0 --port 8000
 ```
 
