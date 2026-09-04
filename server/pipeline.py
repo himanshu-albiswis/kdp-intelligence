@@ -35,6 +35,18 @@ import kdp_estimates  # noqa: E402
 import kdp_adaptive  # noqa: E402
 
 try:  # pragma: no cover - import-shape shim (see server/trends.py)
+    from . import pricing as pricing_mod, reviews as reviews_mod
+    from . import product_signals as signals_mod
+    from .category_db import CategoryStore
+except ImportError:  # pragma: no cover
+    import pricing as pricing_mod
+    import reviews as reviews_mod
+    import product_signals as signals_mod
+    from category_db import CategoryStore
+
+CATEGORY_DB = os.environ.get("KDP_CATEGORY_DB", os.path.join(REPO_ROOT, "data", "categories.db"))
+
+try:  # pragma: no cover - import-shape shim (see server/trends.py)
     from . import categories as categories_mod
 except ImportError:  # pragma: no cover
     import categories as categories_mod
@@ -47,6 +59,16 @@ except ImportError:  # pragma: no cover
 SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_data.json")
 
 ProgressFn = Callable[[str, int, str], None]  # (stage, percent, message)
+
+
+_STORE: Optional[CategoryStore] = None
+
+
+def _category_store() -> CategoryStore:
+    global _STORE
+    if _STORE is None:
+        _STORE = CategoryStore(CATEGORY_DB)
+    return _STORE
 
 
 def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]:
@@ -151,16 +173,24 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
     if complaint_targets:
         c_spider.start()
     seen: set[str] = set()
-    complaints = []
+    complaints, praise = [], []
     for s in [*c_spider.snippets, *dd_spider.review_snippets]:
         key = f"{s.asin}:{s.body[:60]}"
-        if key not in seen:
-            seen.add(key)
-            complaints.append(s)
+        if key in seen:
+            continue
+        seen.add(key)
+        (praise if s.rating >= 4 else complaints).append(s)
     complaints.sort(key=lambda s: s.rating)
 
     # 5 — analytics + bundle
     progress("analytics", 92, "Computing gaps, n-grams, and summary")
+    try:
+        _category_store().record_observed(
+            categories_mod.category_intel([b.model_dump() for b in intel],
+                                          marketplace=marketplace, store=store_key)["categories"],
+            niche=focus)
+    except Exception as exc:  # noqa: BLE001 - the catalogue is a nice-to-have
+        warnings.append(f"category catalogue not updated: {exc}")
     priced = [b.price for b in books if b.price is not None]
     bundle = {
         "seed": seed,
@@ -197,6 +227,15 @@ def run_research(params: dict[str, Any], progress: ProgressFn) -> dict[str, Any]
         # Which shelves the niche actually lives on, and what each badge costs.
         "category_intel": categories_mod.category_intel(
             [b.model_dump() for b in intel], marketplace=marketplace, store=store_key),
+        # Pricing, launch velocity, praise, listing polish, and buyer flow —
+        # all read from data the scan already collected.
+        "pricing": pricing_mod.price_intel(
+            [{"price": b.price, "bsr": b.bsr} for b in intel] or
+            [{"price": b.price, "bsr": None} for b in books], currency_ok=currency_ok),
+        "velocity": reviews_mod.shelf_velocity([b.model_dump() for b in intel]),
+        "praise": reviews_mod.praise_themes([s.model_dump() for s in praise]),
+        "listing_benchmark": signals_mod.shelf_benchmark([b.model_dump() for b in intel]),
+        "also_viewed": signals_mod.adjacency([b.model_dump() for b in intel]),
         "release_velocity": velocity,
         "title_gaps": [m.keyword for m in find_title_gaps(keywords)],
         "title_ngrams": title_ngrams([b.title for b in books]),

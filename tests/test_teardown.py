@@ -360,3 +360,82 @@ class TestCrowdednessSpeaksAboutTheShelf:
     def test_the_verdict_explains_what_it_looked_at(self):
         v = teardown.crowdedness_verdict({"total_results": 258, "median_reviews": 4})
         assert "258" in v["basis"] and "review" in v["basis"].lower()
+
+
+class TestAuthorTrackingInTeardown:
+    """Each row gains an author profile from the author page, when there is one."""
+
+    AUTHOR_PAGE = (
+        '<title>Amazon.com: Rosemary King: books, biography, latest update</title>'
+        '{"customerReviewsSummary":{"rating":{"value":4.8},"count":{"value":491}},'
+        '"detailPageLinkURL":"/Air-Fryer-ebook/dp/B08JCQKGXZ","title":"Air Fryer Cookbook"}'
+        '{"customerReviewsSummary":{"rating":{"value":4.6},"count":{"value":120}},'
+        '"detailPageLinkURL":"/Slow-Cooker-ebook/dp/B08PCW42YK","title":"Slow Cooker Cookbook"}'
+        '{"biography":"Rosemary King is a registered dietitian with fifteen years in clinical nutrition, and the author of twelve cookbooks."}'
+    )
+
+    def _fetch(self, url, **kw):
+        if "/e/B084WP5KB7" in url:
+            return FakeResponse(200, self.AUTHOR_PAGE)
+        return page_for(teardown.parse_asin(url) or "B0TEST00001")
+
+    def test_the_author_url_is_read_from_the_product_page(self):
+        row = teardown.parse_book(PAGE_HTML, PAGE_TEXT, "B08JCQKGXZ")
+        assert row["author_url"] == "https://www.amazon.com/Rosemary-King/e/B084WP5KB7"
+
+    def test_the_row_carries_the_author_profile(self):
+        out = teardown.run_teardown({"identifiers": "B08JCQKGXZ"}, PROGRESS,
+                                    fetch=self._fetch, llm=None, validator=validator_thin)
+        profile = out["rows"][0]["author_profile"]
+        assert profile["catalog_size"] == 2
+        assert profile["total_reviews"] == 611
+
+    def test_a_bio_credential_fills_the_blank_credential_field(self):
+        out = teardown.run_teardown({"identifiers": "B08JCQKGXZ"}, PROGRESS,
+                                    fetch=self._fetch, llm=None, validator=validator_thin)
+        assert out["rows"][0]["author_profile"]["bio"].startswith("Rosemary King is a registered dietitian")
+
+    def test_the_same_author_is_fetched_once_across_rows(self):
+        calls = []
+
+        def counting(url, **kw):
+            calls.append(url)
+            return self._fetch(url)
+
+        teardown.run_teardown({"identifiers": "B08JCQKGXZ B0CTFW6JLD"}, PROGRESS,
+                              fetch=counting, llm=None, validator=validator_thin)
+        assert sum(1 for u in calls if "/e/B084WP5KB7" in u) == 1
+
+    def test_a_missing_author_page_leaves_the_profile_none_not_broken(self):
+        def no_author(url, **kw):
+            if "/e/" in url:
+                return FakeResponse(503, "")
+            return page_for(teardown.parse_asin(url) or "B0TEST00001")
+
+        out = teardown.run_teardown({"identifiers": "B08JCQKGXZ"}, PROGRESS,
+                                    fetch=no_author, llm=None, validator=validator_thin)
+        assert out["rows"][0]["author_profile"] is None
+        assert out["rows"][0]["title"], "the book row itself must survive"
+
+
+class TestTeardownReadsProductSignals:
+    """A live teardown returned quality: None and no also-viewed ASINs while
+    the research deep-dive had both — the parsers were wired into one path."""
+
+    def test_rows_carry_listing_quality(self):
+        out = teardown.run_teardown({"identifiers": "B08JCQKGXZ"}, PROGRESS,
+                                    fetch=fetch_ok, llm=None, validator=validator_thin)
+        assert out["rows"][0]["quality"]["score"] is not None
+
+    def test_rows_carry_also_viewed_asins(self):
+        carousel = ('<div data-a-carousel-options="{&quot;ajax&quot;:{&quot;id_list&quot;:['
+                    '&quot;{\\&quot;id\\&quot;:\\&quot;B0BNJQPG1K\\&quot;}&quot;]}}"></div>')
+
+        def fetch(url, **kw):
+            r = page_for("B08JCQKGXZ")
+            r.body = r.body + carousel
+            return r
+
+        out = teardown.run_teardown({"identifiers": "B08JCQKGXZ"}, PROGRESS,
+                                    fetch=fetch, llm=None, validator=validator_thin)
+        assert out["rows"][0]["also_viewed"] == ["B0BNJQPG1K"]

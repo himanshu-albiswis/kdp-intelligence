@@ -39,6 +39,10 @@ from discovery import pipeline as discovery_pipeline
 from discovery.store import DiscoveryStore
 import royalty as royalty_mod
 import export as export_mod
+import guidelines as guidelines_mod
+import translate as translate_mod
+from category_db import CategoryStore, crawl as crawl_categories
+from sources import registry as sources_registry
 import teardown as teardown_mod
 import trends as trends_mod
 
@@ -116,7 +120,19 @@ def _worker(job_id: str, params: dict[str, Any], kind: str = "research") -> None
         _update(job_id, stage=stage, pct=pct, message=message)
 
     try:
-        if kind == "teardown":
+        if kind == "crawl":
+            progress("crawl", 10, f"Walking the bestseller tree, budget {params.get('max_pages')} pages")
+            # Plain headers got the 503 decoy on the bestseller tree; the
+            # measured-working pairing for amazon.com is edge + stealth headers.
+            from scrapling.fetchers import Fetcher as _Fetcher
+            fetch = lambda url: _Fetcher.get(url, impersonate="edge", stealthy_headers=True, timeout=30)
+            parsed = crawl_categories(CATEGORY_STORE, fetch=fetch, root=params.get("root", "154606011"),
+                                      max_pages=int(params.get("max_pages", 40)))
+            bundle = {"pages_parsed": parsed, "catalogue_size": CATEGORY_STORE.count(),
+                      "rows": CATEGORY_STORE.all(limit=200),
+                      "warnings": [] if parsed else ["No bestseller page could be read — Amazon "
+                                                     "is likely soft-blocking this IP. Retry later or via a proxy."]}
+        elif kind == "teardown":
             bundle = teardown_mod.run_teardown(params, progress)
         elif kind == "discovery":
             bundle = discovery_pipeline.run_discovery(params, progress, store=DISCOVERY_STORE)
@@ -202,6 +218,25 @@ class TeardownRequest(BaseModel):
     identifiers: str = Field(min_length=8, max_length=4000)
 
 
+class ListingRequest(BaseModel):
+    """A KDP listing as the form asks for it."""
+    title: str = ""
+    subtitle: str = ""
+    author: str = ""
+    description: str = ""
+    keywords: list[str] = Field(default_factory=list, max_length=12)
+    categories: list[str] = Field(default_factory=list, max_length=6)
+
+
+class TranslateRequest(ListingRequest):
+    marketplaces: list[str] = Field(default_factory=list, max_length=14)
+
+
+class CrawlRequest(BaseModel):
+    root: str = "154606011"
+    max_pages: int = Field(default=40, ge=1, le=300)
+
+
 class DiscoverRequest(BaseModel):
     """No seed keyword — that is the point of Discovery."""
     window: str = Field(default="7d", pattern="^(24h|7d|30d)$")
@@ -220,6 +255,47 @@ class TrendRequest(BaseModel):
     plain_headers: bool = False
     proxy: Optional[str] = None
     proxies: Optional[list[str]] = None
+
+
+CATEGORY_STORE = CategoryStore(os.environ.get(
+    "KDP_CATEGORY_DB", os.path.join(os.path.dirname(DB_PATH), "categories.db")))
+
+
+@app.post("/api/listing/check")
+def listing_check(req: ListingRequest) -> dict[str, Any]:
+    """KDP metadata rules, before Amazon bounces the listing."""
+    return guidelines_mod.check_listing(req.model_dump())
+
+
+@app.post("/api/listing/translate")
+def listing_translate(req: TranslateRequest) -> dict[str, Any]:
+    """Localised packs per marketplace, each re-checked against KDP's rules."""
+    provider = brief_mod.active_provider()
+    llm = (lambda p: brief_mod.call_llm(p, max_output_tokens=8192)) if provider else None
+    listing = req.model_dump()
+    markets = listing.pop("marketplaces") or []
+    try:
+        return translate_mod.translate_listing(listing, markets, llm=llm)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.get("/api/categories")
+def categories_search(q: str = "", limit: int = 50) -> dict[str, Any]:
+    rows = CATEGORY_STORE.search(q, limit=limit) if q else CATEGORY_STORE.all(limit=limit)
+    return {"count": CATEGORY_STORE.count(), "results": rows}
+
+
+@app.get("/api/categories/children/{node}")
+def categories_children(node: str) -> list[dict[str, Any]]:
+    return CATEGORY_STORE.children(node)
+
+
+@app.post("/api/categories/crawl")
+def categories_crawl(req: CrawlRequest, x_api_key: Optional[str] = Header(default=None)) -> dict[str, str]:
+    """Walk Amazon's bestseller tree within a page budget, as a background job."""
+    _check_key(x_api_key)
+    return _enqueue({**req.model_dump(), "label": f"category crawl · {req.max_pages} pages"}, "crawl")
 
 
 @app.post("/api/teardown")

@@ -33,6 +33,7 @@ AMAZON_HOST = "https://www.amazon.com"
 _ASIN = re.compile(r"\b(B[0-9A-Z]{9})\b")
 _TITLE = re.compile(r'id="productTitle"[^>]*>\s*([^<]{2,300})', re.S)
 _AUTHOR = re.compile(r'/e/B[A-Z0-9]{9}[^>]*>\s*([A-Za-z][A-Za-z.\'\- ]{2,40})\s*<')
+_AUTHOR_URL = re.compile(r'href="(/[^"/]+/e/B[A-Z0-9]{9})')
 _AUTHOR_FALLBACK = re.compile(r'class="author[^"]*".{0,200}?>\s*([A-Za-z][A-Za-z.\'\- ]{2,40})\s*<', re.S)
 _RATING = re.compile(r"([\d.]+)\s+out of 5 stars")
 # The product page says "491 global ratings"; a related-products carousel
@@ -98,6 +99,7 @@ def parse_book(html: str, text: str, asin: str) -> dict[str, Any]:
             title = full_title
 
     author = _first(_AUTHOR, html) or _first(_AUTHOR_FALLBACK, html)
+    author_path = _first(_AUTHOR_URL, html)
 
     rating_text = _first(_RATING, text)
     pages = _int(_first(_PAGES, text)) or _int(_first(_PAGES_LOOSE, text))
@@ -115,6 +117,7 @@ def parse_book(html: str, text: str, asin: str) -> dict[str, Any]:
         "title": title,
         "subtitle": subtitle,
         "author": author,
+        "author_url": f"{AMAZON_HOST}{author_path}" if author_path else None,
         "rating": float(rating_text) if rating_text else None,
         "reviews": _int(_first(_REVIEWS, text)),
         "pages": pages,
@@ -152,8 +155,10 @@ def bsr_status(bsr: Optional[int], observed_at: Optional[str] = None) -> str:
 # --------------------------------------------------------------------------
 try:  # pragma: no cover - the app runs flat (--app-dir server), tests as a package
     from .sources import registry
+    from . import product_signals
 except ImportError:  # pragma: no cover
     from sources import registry
+    import product_signals
 
 MAX_BOOKS = 20
 _TAGS = re.compile(r"<(script|style).*?</\1>|<[^>]+>", re.S)
@@ -164,8 +169,9 @@ Rules:
 - Output ONLY a JSON array. No prose, no code fences.
 - One element per book: {"asin": str, "credential": str, "sub_niche": str,
   "positioning": str}
-- "credential" is the author's stated authority (e.g. "RD, 15 years clinical").
-  Use "" if the page does not state one. Never infer or invent a credential.
+- "credential" is the author's stated authority (e.g. "RD, 15 years clinical"),
+  taken from author_bio when present. Use "" if nothing states one. Never
+  infer or invent a credential.
 - "sub_niche" is the specific shelf this book competes on, phrased as a buyer
   would search it — e.g. "air fryer cookbooks for beginners".
 - "positioning" is one sentence on how the book differentiates: angle,
@@ -194,14 +200,53 @@ def _fetch_one(fetch: Callable, asin: str) -> dict[str, Any]:
     if status != 200 or len(body) < 5_000 and "productTitle" not in body:
         return {**_blank(asin),
                 "error": f"HTTP {status}, {len(body)} bytes — blocked or not a product page"}
-    return {**parse_book(body, page_text(body), asin), "error": None}
+    row = parse_book(body, page_text(body), asin)
+    # Same product page, two more reads at no extra request.
+    row["quality"] = product_signals.listing_quality(body)
+    row["also_viewed"] = product_signals.also_viewed_asins(body, own_asin=asin)
+    return {**row, "error": None}
 
 
 def _blank(asin: str) -> dict[str, Any]:
     return {"asin": asin, "title": None, "subtitle": None, "author": None,
-            "rating": None, "reviews": None, "pages": None, "year": None,
+            "author_url": None, "rating": None, "quality": {}, "also_viewed": [], "reviews": None, "pages": None, "year": None,
             "bsr": None, "category_rank": None, "formats": [],
             "paperback_isbn": None, "source_url": f"{AMAZON_HOST}/dp/{asin}"}
+
+
+def _attach_authors(rows: list[dict[str, Any]], fetch: Callable) -> None:
+    """One author-page fetch per distinct author; a failure leaves None.
+
+    The author page is also the only anonymous source of a bio, which is
+    where a credential can actually be read rather than guessed.
+    """
+    try:
+        from . import authors as authors_mod
+    except ImportError:  # pragma: no cover - flat import shape
+        import authors as authors_mod  # type: ignore
+
+    cache: dict[str, Optional[dict[str, Any]]] = {}
+    known_dates = {r["asin"]: f"{r['year']}-01-01" for r in rows if r.get("year")}
+    for row in rows:
+        url = row.get("author_url")
+        row["author_profile"] = None
+        if not url:
+            continue
+        if url not in cache:
+            try:
+                response = fetch(url)
+                body = getattr(response, "body", "") or ""
+                if not isinstance(body, str):
+                    body = body.decode("utf-8", "ignore")
+                if getattr(response, "status", 0) == 200 and body:
+                    page = authors_mod.parse_author_page(body)
+                    cache[url] = authors_mod.profile(page, known_dates=known_dates) \
+                        if page.get("catalog") or page.get("name") else None
+                else:
+                    cache[url] = None
+            except Exception:  # noqa: BLE001 - an author page must never sink a row
+                cache[url] = None
+        row["author_profile"] = cache[url]
 
 
 def _enrich(rows: list[dict[str, Any]], llm: Optional[Callable]) -> Optional[str]:
@@ -221,6 +266,7 @@ def _enrich(rows: list[dict[str, Any]], llm: Optional[Callable]) -> Optional[str
     listing = "\n".join(
         json.dumps({"asin": r["asin"], "title": r.get("title"),
                     "subtitle": r.get("subtitle"), "author": r.get("author"),
+                    "author_bio": ((r.get("author_profile") or {}).get("bio") or "")[:600],
                     "pages": r.get("pages"), "year": r.get("year"),
                     "category_rank": r.get("category_rank")})
         for r in usable)
@@ -336,6 +382,9 @@ def run_teardown(params: dict[str, Any], progress, fetch: Optional[Callable] = N
     today = date.today().isoformat()
     for row in rows:
         row["bsr_status"] = bsr_status(row.get("bsr"), observed_at=today)
+
+    progress("authors", 45, "Reading author pages")
+    _attach_authors(rows, fetch)
 
     progress("enrich", 55, "Describing positioning")
     note = _enrich(rows, llm)

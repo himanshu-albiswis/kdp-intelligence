@@ -63,6 +63,8 @@ from kdp_longtail_finder import (  # noqa: E402
 )
 from kdp_niche_validator import Book, KDPNicheSpider  # noqa: E402
 import kdp_estimates  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "server"))
+import product_signals  # noqa: E402
 
 from scrapling.fetchers import FetcherSession, ProxyRotator  # noqa: E402
 from scrapling.spiders import Request, Response, Spider  # noqa: E402
@@ -106,6 +108,10 @@ class BookIntel(BaseModel):
     pages: Optional[int] = None
     est_sales_per_day: Optional[float] = None
     est_monthly_royalty: Optional[float] = None
+    # Listing polish signals and the also-viewed carousel, read from the same
+    # product page at no extra request. See server/product_signals.py.
+    quality: dict = Field(default_factory=dict)
+    also_viewed: list[str] = Field(default_factory=list)
 
 
 class ReviewSnippet(BaseModel):
@@ -201,7 +207,10 @@ class DeepDiveSpider(Spider):
                 for t in card.css('[data-hook="review-title"] span::text, [data-hook="reviewTitle"] ::text').getall()
                 if t.strip() and "out of 5 stars" not in t
             ]
-            if body and 1 <= rating <= 3:
+            # Keep every star level: 1-3 feed complaint mining, 4-5 feed praise
+            # mining. The paginated 4-5 star pages are login-walled, so the
+            # product page is the only anonymous source of praise.
+            if body and 1 <= rating <= 5:
                 self.review_snippets.append(
                     ReviewSnippet(
                         asin=book.asin,
@@ -213,6 +222,9 @@ class DeepDiveSpider(Spider):
                 )
 
         pages_match = re.search(r"Print length[^0-9]*(\d+)\s*pages", detail)
+        raw_page = response.body if isinstance(response.body, str) else (response.body or b"").decode("utf-8", "ignore")
+        quality = product_signals.listing_quality(raw_page)
+        also_viewed = product_signals.also_viewed_asins(raw_page, own_asin=book.asin)
         sales = est_sales_per_day(bsr)
         royalty = kdp_royalty_per_sale(book.price)
 
@@ -229,6 +241,8 @@ class DeepDiveSpider(Spider):
                 bsr=bsr,
                 category_rank=category_rank,
                 category_ranks=category_ranks,
+                quality=quality,
+                also_viewed=also_viewed,
                 publication_date=pub_date_iso,
                 pages=int(pages_match.group(1)) if pages_match else None,
                 est_sales_per_day=round(sales, 2) if sales is not None else None,

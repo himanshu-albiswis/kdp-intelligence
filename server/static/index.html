@@ -380,6 +380,14 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     height:32px;padding:0 var(--s3);font-size:12px;display:inline-flex;align-items:center;
     border-radius:var(--r-ctl);text-decoration:none;font-weight:600}
   .ghostmini:hover{border-color:var(--accent)}
+  .bands{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:var(--s2);margin:var(--s3) 0}
+  .band{background:var(--glass-strong);border:1px solid var(--stroke);border-radius:var(--r-ctl);padding:var(--s3);display:flex;flex-direction:column;gap:2px;font-size:12.5px}
+  .complaint.praise{border-left-color:var(--money)} .complaint.praise .h{color:var(--money)}
+  .tagchip.offpage{border-style:dashed}
+  .q-surging,.q-steady{background:color-mix(in srgb,var(--money) 18%,transparent);color:var(--money)}
+  .q-slow{background:color-mix(in srgb,var(--gold) 18%,transparent);color:var(--gold)}
+  .q-stale{background:color-mix(in srgb,var(--risk) 18%,transparent);color:var(--risk)}
+  .kpi .v.bad{color:var(--risk)} th.bad{color:var(--risk)} th.warn2{color:var(--gold)}
 </style>
 </head>
 <body>
@@ -391,6 +399,8 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
     <button data-tab="discover">Discovery</button>
     <button data-tab="trends">Trend Radar</button>
     <button data-tab="teardown">Teardown</button>
+    <button data-tab="listing">Listing</button>
+    <button data-tab="categories">Categories</button>
     <button data-tab="calc">Royalty Calculator</button>
   </nav>
 </header>
@@ -467,6 +477,36 @@ td a:hover{color:var(--accent);border-bottom-color:var(--accent)}
       <button class="btn primary" type="submit">Tear down</button>
     </form>
   </div>
+  <div id="pane-listing" hidden>
+    <h2>Listing check &amp; translate</h2>
+    <p class="small">Paste the listing exactly as you'd enter it in KDP. Check it against KDP's
+      metadata rules, then translate it for other marketplaces — every translation is re-checked.</p>
+    <form id="listingForm">
+      <label>Title</label><input name="title" maxlength="300">
+      <label>Subtitle</label><input name="subtitle" maxlength="300">
+      <label>Author</label><input name="author">
+      <label>Description <span class="small">(HTML allowed: b, i, u, br, p, h1–h6, ul, ol, li)</span></label>
+      <textarea name="description" rows="6"></textarea>
+      <label>7 backend keywords <span class="small">(one per line)</span></label>
+      <textarea name="keywords" rows="7"></textarea>
+      <label>Categories <span class="small">(one per line, up to 3)</span></label>
+      <textarea name="categories" rows="3"></textarea>
+      <label>Translate for <span class="small">(optional)</span></label>
+      <div class="catgrid" id="mktGrid"></div>
+      <div class="btnrow"><button class="btn primary" type="submit">Check listing</button>
+        <button class="btn ghost" type="button" id="translateBtn">Translate</button></div>
+    </form>
+  </div>
+  <div id="pane-categories" hidden>
+    <h2>Category catalogue</h2>
+    <p class="small">Every category any scan has observed, plus whatever the bestseller crawl has
+      mapped. Grows with use — search it, or crawl more of Amazon's tree.</p>
+    <form id="catSearchForm">
+      <label>Search</label><input name="q" placeholder="e.g. air fryer, menopause, budgeting">
+      <div class="btnrow"><button class="btn primary" type="submit">Search</button>
+        <button class="btn ghost" type="button" id="crawlBtn">Crawl 40 pages</button></div>
+    </form>
+  </div>
   <div id="pane-calc" hidden>
     <h2>Royalty calculator</h2>
     <form id="calcForm">
@@ -525,7 +565,8 @@ const md = t => esc(t).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/^### (.+)$
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   tab = b.dataset.tab;
   document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x===b));
-  ["research","discover","trends","teardown","calc"].forEach(p => $("#pane-"+p).hidden = p!==tab);
+  ["research","discover","trends","teardown","listing","categories","calc"].forEach(p => $("#pane-"+p).hidden = p!==tab);
+  if (tab==="categories") { showCategories(""); }
   if (tab==="calc") { $("#main").innerHTML = '<div class="empty">Fill the calculator to see break-even math.</div>'; loadFeasJobs(); }
 });
 
@@ -559,7 +600,7 @@ async function openJob(id){
   activeJob = id; clearInterval(pollTimer);
   const tick = async () => {
     const [job] = await Promise.all([api("/research/"+id), refreshJobs()]);
-    ({trends:renderTrends, discovery:renderDiscovery, teardown:renderTeardown}[job.kind] || renderResearch)(job);
+    ({trends:renderTrends, discovery:renderDiscovery, teardown:renderTeardown, crawl:renderCrawl}[job.kind] || renderResearch)(job);
     if (["done","partial","failed"].includes(job.status)) clearInterval(pollTimer);
   };
   await tick(); pollTimer = setInterval(tick, 2500);
@@ -663,6 +704,22 @@ function renderResearch(job){
           <div class="small">${esc(p.why)}</div>
         </div>`).join("")}</div>
       <p class="small">${esc(r.category_intel.note||"")}</p>`:""}
+    ${r.pricing&&r.pricing.priced?`<h3>Pricing on page 1 <span class="small">(bands follow KDP's 70% window)</span></h3>
+      <div class="kpis">
+        <div class="kpi"><div class="v mono">${cur}${r.pricing.median}</div><div class="l">median price · ${cur}${r.pricing.q1}–${cur}${r.pricing.q3} middle half</div></div>
+        <div class="kpi"><div class="v">${r.pricing.sweet_spot?esc(r.pricing.sweet_spot.label):"—"}</div><div class="l">sweet spot${r.pricing.sweet_spot?" · "+esc(r.pricing.sweet_spot.why):""}</div></div>
+        <div class="kpi"><div class="v">${esc(r.pricing.price_rank_relation.direction)}</div><div class="l">price vs rank${r.pricing.price_rank_relation.rho!=null?" · ρ "+r.pricing.price_rank_relation.rho:""}</div></div>
+      </div>
+      <div class="bands">${r.pricing.bands.map(b=>`<div class="band"><b>${esc(b.label)}</b><span class="mono">${b.count} book(s)</span><span class="small">${b.median_bsr?"median BSR #"+fmt(b.median_bsr):"—"}</span></div>`).join("")}</div>`:""}
+    ${r.velocity&&r.velocity.books_measured?`<h3>Review velocity</h3>
+      <div class="small">Median <b>${r.velocity.median_per_month}</b> reviews/month across ${r.velocity.books_measured} dated books — shelf reads <span class="q q-${esc(r.velocity.band)}">${esc(r.velocity.band)}</span></div>`:""}
+    ${(r.praise||[]).length?`<h3>What 4–5★ reviews reward <span class="small">(the features you can't skip)</span></h3>
+      ${r.praise.map(p=>`<div class="complaint praise"><div class="h">${esc(p.theme)} <span class="small">· ${p.mentions} reviews</span></div>${esc(p.example)}</div>`).join("")}`:""}
+    ${r.listing_benchmark&&r.listing_benchmark.books?`<h3>Listing polish on page 1</h3>
+      <div class="small">${esc(r.listing_benchmark.read)}</div>`:""}
+    ${r.also_viewed&&(r.also_viewed.neighbours||[]).length?`<h3>Where buyers drift <span class="small">(customers also viewed)</span></h3>
+      <div class="small">${esc(r.also_viewed.read)}</div>
+      <div>${r.also_viewed.neighbours.slice(0,16).map(n=>`<a class="tagchip ${n.on_page_1?"":"offpage"}" href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title||n.asin)} <span class="small">×${n.named_by}</span></a>`).join("")}</div>`:""}
     ${(r.title_gaps||[]).length?`<h3>Title gaps</h3><div>${r.title_gaps.map(g=>`<span class="tagchip">💡 ${esc(g)}</span>`).join("")}</div>`:""}
     ${(r.title_ngrams||[]).length?`<h3>What page-1 titles are made of</h3><div>${r.title_ngrams.map(([g,c])=>`<span class="tagchip">${esc(g)} ×${c}</span>`).join("")}</div>`:""}
     ${(r.complaints||[]).length?`<h3>What buyers complain about</h3>${r.complaints.slice(0,10).map(c=>`<div class="complaint">
@@ -781,6 +838,66 @@ $("#teardownForm").addEventListener("submit", async e => {
   catch(err){ alert(err.message); }
 });
 
+/* ---------- listing tab ---------- */
+const MKTS_TRANSLATE = [["de","German"],["fr","French"],["it","Italian"],["es","Spanish"],["nl","Dutch"],["se","Swedish"],["jp","Japanese"],["br","Portuguese"],["mx","Spanish (MX)"],["uk","UK (English)"]];
+$("#mktGrid").innerHTML = MKTS_TRANSLATE.map(([v,l])=>`<label class="cat"><input type="checkbox" name="mkt" value="${v}"> ${l}</label>`).join("");
+function listingBody(){
+  const f = new FormData($("#listingForm"));
+  const lines = k => String(f.get(k)||"").split("\n").map(x=>x.trim()).filter(Boolean);
+  return { title:f.get("title")||"", subtitle:f.get("subtitle")||"", author:f.get("author")||"",
+           description:f.get("description")||"", keywords:lines("keywords"), categories:lines("categories") };
+}
+function issuesHtml(g){
+  return `<div class="kpis"><div class="kpi"><div class="v ${g.passed?"":"bad"}">${g.score}<span class="l" style="display:inline"> /100</span></div><div class="l">${g.passed?"passes KDP's metadata rules":g.errors+" error(s) KDP will reject"} · ${g.warnings} warning(s)</div></div></div>
+    ${g.issues.length?`<table class="teardown"><tbody>${g.issues.map(i=>`<tr><th class="${i.severity==="error"?"bad":"warn2"}">${esc(i.severity)} · ${esc(i.field)}</th><td>${esc(i.message)}</td></tr>`).join("")}</tbody></table>`:'<div class="small">No issues found.</div>'}`;
+}
+$("#listingForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    const g = await api("/listing/check",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(listingBody())});
+    $("#main").innerHTML = `<div class="pagehead"><h2>Listing check</h2></div>${issuesHtml(g)}`;
+  } catch(err){ alert(err.message); }
+});
+$("#translateBtn").onclick = async () => {
+  const markets = [...document.querySelectorAll('#mktGrid input:checked')].map(c=>c.value);
+  if (!markets.length) return alert("Pick at least one marketplace to translate for.");
+  $("#main").innerHTML = '<div class="empty">Translating…</div>';
+  try {
+    const out = await api("/listing/translate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...listingBody(), marketplaces:markets})});
+    $("#main").innerHTML = `<div class="pagehead"><h2>Translated listings</h2></div>
+      ${(out.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}
+      ${(out.packs||[]).map(p=>`<div class="oppcard"><div class="opphead"><div><div class="oppname">${esc(p.title)}</div><div class="small">${esc(p.subtitle||"")}</div></div><span class="q ${p.translated?"q-GO":"q-VERIFY"}">${esc(p.marketplace.toUpperCase())} · ${esc(p.language)}</span></div>
+        <table class="teardown"><tbody>
+          <tr><th>Keywords</th><td>${(p.keywords||[]).map(k=>`<span class="tagchip">${esc(k)}</span>`).join("")}</td></tr>
+          <tr><th>Description</th><td class="small">${esc((p.description||"").replace(/<[^>]+>/g," ").slice(0,600))}</td></tr>
+          <tr><th>KDP check</th><td>${p.guidelines.score}/100 · ${p.guidelines.errors} error(s), ${p.guidelines.warnings} warning(s)</td></tr>
+        </tbody></table></div>`).join("")}`;
+  } catch(err){ alert(err.message); }
+};
+
+/* ---------- categories tab ---------- */
+function categoryRows(rows){
+  if (!rows.length) return '<div class="nodata">Nothing here yet. Run a research scan (categories are recorded from every deep-dive) or crawl Amazon\'s bestseller tree.</div>';
+  return `<div class="tablewrap"><table><tr><th>Category</th><th>Node</th><th>Seen</th><th>Best rank seen</th><th>Entry bar</th><th>From niches</th></tr>
+    ${rows.map(c=>`<tr><td>${esc(c.name)}</td><td class="mono">${c.node?`<a href="https://www.amazon.com/zgbs/digital-text/${esc(c.node)}" target="_blank" rel="noopener">${esc(c.node)}</a>`:"—"}</td><td class="num">${c.times_seen}</td><td class="num">${c.best_observed_rank!=null?"#"+c.best_observed_rank:"—"}</td><td class="num">${c.entry_sales_day!=null?c.entry_sales_day+"/day":"—"}</td><td class="small">${esc((c.niches||"").split("|").filter(Boolean).slice(0,3).join(", "))}</td></tr>`).join("")}</table></div>`;
+}
+async function showCategories(q){
+  const out = await api("/categories?q="+encodeURIComponent(q||"")+"&limit=200");
+  $("#main").innerHTML = `<div class="pagehead"><h2>Category catalogue <span class="small">· ${fmt(out.count)} categories known${q?` · matching “${esc(q)}”`:""}</span></h2></div>${categoryRows(out.results)}`;
+}
+$("#catSearchForm").addEventListener("submit", e => { e.preventDefault(); showCategories(new FormData(e.target).get("q")); });
+$("#crawlBtn").onclick = async () => {
+  try { const {job_id} = await api("/categories/crawl",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({max_pages:40})}); openJob(job_id); }
+  catch(err){ alert(err.message); }
+};
+function renderCrawl(job){
+  if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Crawl failed.</b> ${esc(job.message)}</div>`;
+  if (!job.result) return $("#main").innerHTML = progressView(job);
+  const r = job.result;
+  $("#main").innerHTML = `<div class="pagehead"><h2>Category crawl <span class="small">· ${r.pages_parsed} pages read · catalogue now ${fmt(r.catalogue_size)}</span></h2></div>
+    ${(r.warnings||[]).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join("")}${categoryRows(r.rows||[])}`;
+}
+
 /* ---------- teardown view ---------- */
 function renderTeardown(job){
   if (job.status==="failed") return $("#main").innerHTML = `<div class="warn"><b>Teardown failed.</b> ${esc(job.message)}</div>`;
@@ -812,6 +929,8 @@ function renderTeardown(job){
           <div><span class="l">Competing books</span><b class="mono">${c.competing_books!=null?fmt(c.competing_books):"—"}</b></div>
         </div>
         <table class="teardown"><tbody>
+          ${b.author_profile?`<tr><th>Author</th><td>${esc(b.author_profile.read)}${b.author_profile.bio?`<div class="small" style="margin-top:4px">${esc(b.author_profile.bio.slice(0,240))}</div>`:""}</td></tr>`:""}
+          ${b.quality&&b.quality.score!=null?`<tr><th>Listing polish</th><td><b class="mono">${b.quality.score}</b>/100 · ${b.quality.aplus?"A+ content":"no A+"} · ${fmt(b.quality.description_chars)} chars description${b.quality.series&&b.quality.series.of>1?` · series (${b.quality.series.book} of ${b.quality.series.of})`:""}</td></tr>`:""}
           <tr><th>Sub-niche</th><td>${cell(b.sub_niche)}</td></tr>
           <tr><th>Positioning</th><td>${cell(b.positioning)}</td></tr>
           <tr><th>Crowdedness</th><td>${cell(c.verdict)}${c.phrase?` <span class="small">— judged on “${esc(c.phrase)}”</span>`:""}</td></tr>

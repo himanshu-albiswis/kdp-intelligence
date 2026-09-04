@@ -99,6 +99,18 @@ Every metric appears in the JSON output, so every score is auditable.
   signal.
 - No search-volume numbers (autocomplete presence/position is the proxy).
 
+## What the web app adds on top of the CLI tools
+
+| Feature | What it does |
+|---|---|
+| **Niche Research** | Keyword table with an honest 0–100 demand index, category picks with entry bars, income as a confidence band, pricing bands and sweet spot, review velocity, praise mining (what 4–5★ reviews reward), complaint mining, listing-polish benchmark, and the "customers also viewed" flow between books |
+| **Discovery** | Seedless: harvests what people ask for, normalises it into book concepts with receipts, scores demand ÷ supply |
+| **Trend Radar** | Phrase-level trends, with or without a topic, validated against live Amazon |
+| **Teardown** | Paste ASINs: positioning, crowdedness, listing polish, and an author profile (catalog size, review mass, series habit, cadence when dates are known) |
+| **Listing** | KDP metadata guidelines checker and per-marketplace translation, every pack re-checked |
+| **Categories** | A catalogue that grows with every scan, plus a bounded crawl of Amazon's bestseller tree |
+| **Export** | CSV for every table, formula-injection safe |
+
 ## Tests
 
 ```bash

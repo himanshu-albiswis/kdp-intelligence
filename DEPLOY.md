@@ -114,6 +114,23 @@ target country, or research the marketplace matching your location.
   Amazon and burning into a soft block. Never set it in production — a stale
   cache scoring old data is worse than a slow scan.
 
+## Feature notes
+
+- **Praise mining** reads the reviews Amazon renders on the product page.
+  The paginated 4–5★ review pages are login-walled to anonymous visitors
+  (HTTP 200, zero cards), so that is the only anonymous source.
+- **Also-viewed** ASINs come from the carousel's JSON on the product page;
+  titles load by AJAX and are resolved from books the scan already knows.
+- **Author profiles** come from the author page's embedded catalog. It has
+  no publication dates, so cadence is computed only from dates deep-dives
+  learned; otherwise it reads "unknown" rather than being estimated.
+- **Category crawl** walks `/gp/bestsellers/digital-text/<node>` breadth-
+  first within a page budget (the `/zgbs/` form 404s without its slug). The
+  budget bounds requests, not successes. Set `KDP_CATEGORY_DB` to relocate
+  the catalogue.
+- **Translation** needs `GEMINI_API_KEY`; without it the Listing tab still
+  runs the guidelines check and says translation is off.
+
 ## Operational notes
 
 - **Demo mode** (`demo: true` or the dashboard button) serves the bundled
