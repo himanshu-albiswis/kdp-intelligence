@@ -74,7 +74,7 @@ export function ResearchForm({ onJob, prefill }: { onJob: JobHandler; prefill: {
 
   return (
     <form ref={formRef} onSubmit={submit}>
-      <h2 className="display mb-4 text-[26px] leading-[1.2]">New research</h2>
+      <h2 className="panel-title mb-4">New research</h2>
       <Lbl>Seed keyword</Lbl>
       <Field name="seed" placeholder='e.g. "kidney disease food list"' required minLength={2} value={seed} onChange={(e) => setSeed(e.target.value)} />
       <Row2>
@@ -92,8 +92,8 @@ export function ResearchForm({ onJob, prefill }: { onJob: JobHandler; prefill: {
       <Lbl hint="(optional, comma-separated)">Rotating proxies</Lbl>
       <Field name="proxies" placeholder="http://user:pass@ip1:8080, …" />
       <Check id="plain" checked={plain} onChange={setPlain} hint="— drop the faked Google referer if Amazon returns tiny pages">Plain headers</Check>
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Run research</Button>
-      <Button type="button" variant="outline" className="mt-2 w-full" onClick={demo} disabled={busy}>Load demo dataset</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Run research</Button>
+      <Button type="button" variant="outline" className="mt-2 h-11 w-full rounded-full border-0 bg-card-3 text-[14px] text-ink hover:bg-card-3/80" onClick={demo} disabled={busy}>Load demo dataset</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -111,7 +111,7 @@ export function DiscoverForm({ onJob }: { onJob: JobHandler }) {
   };
   return (
     <form onSubmit={submit}>
-      <h2 className="display mb-2 text-[26px] leading-[1.2]">Discovery</h2>
+      <h2 className="panel-title mb-4">Discovery</h2>
       <p className="m-0"><Small>No keyword needed. Finds what people are asking for right now, then checks whether Amazon already sells it.</Small></p>
       <Lbl>Time window</Lbl>
       <Select name="window" defaultValue="7d"><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></Select>
@@ -119,7 +119,7 @@ export function DiscoverForm({ onJob }: { onJob: JobHandler }) {
       <CheckGrid options={CATS} value={cats} onChange={setCats} />
       <Lbl>Validate top</Lbl>
       <Field name="validate_top" type="number" defaultValue={8} min={1} max={20} />
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Find opportunities</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Find opportunities</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -154,7 +154,7 @@ export function TrendForm({ onJob }: { onJob: JobHandler }) {
   };
   return (
     <form onSubmit={submit}>
-      <h2 className="display mb-2 text-[26px] leading-[1.2]">Trend Radar</h2>
+      <h2 className="panel-title mb-4">Trend Radar</h2>
       <p className="m-0"><Small>Reads Google + YouTube + Reddit for what people are asking right now, then validates every candidate against live Amazon. Give it a topic to narrow the scan, or leave it blank to sweep every category.</Small></p>
       <Lbl hint="(optional — leave blank to scan every category)">Topic</Lbl>
       <Field name="seed" placeholder='e.g. "vagus nerve", "adhd" — or leave empty' />
@@ -165,7 +165,7 @@ export function TrendForm({ onJob }: { onJob: JobHandler }) {
       <Lbl hint="(needed for Reddit + heavy use)">Rotating proxies</Lbl>
       <Field name="proxies" placeholder="http://user:pass@ip1:8080, …" />
       <Check id="plain-trend" checked={plain} onChange={setPlain} hint="— use if Amazon returns tiny pages">Plain headers</Check>
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Scan trends</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Scan trends</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -181,11 +181,11 @@ export function TeardownForm({ onJob }: { onJob: JobHandler }) {
   };
   return (
     <form onSubmit={submit}>
-      <h2 className="display mb-2 text-[26px] leading-[1.2]">Reverse-ASIN teardown</h2>
+      <h2 className="panel-title mb-4">Reverse-ASIN teardown</h2>
       <p className="m-0"><Small>Paste ASINs or Amazon links — one per line, or comma separated. Each becomes a row: how the book is positioned, and how contested its shelf is.</Small></p>
       <Lbl hint="(up to 20)">ASINs or Amazon links</Lbl>
       <Area name="identifiers" rows={7} required placeholder={"B08JCQKGXZ\nhttps://www.amazon.com/dp/B0CTFW6JLD\nB0FFNQ7W9J"} />
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Tear down</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Tear down</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -218,7 +218,7 @@ export function ListingForm({ onShow }: { onShow: ShowHandler }) {
 
   return (
     <form ref={formRef} onSubmit={check}>
-      <h2 className="display mb-2 text-[26px] leading-[1.2]">Listing check &amp; translate</h2>
+      <h2 className="panel-title mb-4">Listing check &amp; translate</h2>
       <p className="m-0"><Small>Paste the listing exactly as you'd enter it in KDP. Check it against KDP's metadata rules, then translate it for other marketplaces — every translation is re-checked.</Small></p>
       <Lbl>Title</Lbl><Field name="title" maxLength={300} />
       <Lbl>Subtitle</Lbl><Field name="subtitle" maxLength={300} />
@@ -228,8 +228,8 @@ export function ListingForm({ onShow }: { onShow: ShowHandler }) {
       <Lbl hint="(one per line, up to 3)">Categories</Lbl><Area name="categories" rows={3} />
       <Lbl hint="(optional)">Translate for</Lbl>
       <CheckGrid options={MKTS_TRANSLATE} value={markets} onChange={setMarkets} />
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Check listing</Button>
-      <Button type="button" variant="outline" className="mt-2 w-full" onClick={translate} disabled={busy}>Translate</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Check listing</Button>
+      <Button type="button" variant="outline" className="mt-2 h-11 w-full rounded-full border-0 bg-card-3 text-[14px] text-ink hover:bg-card-3/80" onClick={translate} disabled={busy}>Translate</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -246,11 +246,11 @@ export function CategoriesForm({ onJob, onShow }: { onJob: JobHandler; onShow: S
   const crawl = () => run(async () => onJob((await postJson("/categories/crawl", { max_pages: 40 })).job_id));
   return (
     <form onSubmit={search}>
-      <h2 className="display mb-2 text-[26px] leading-[1.2]">Category catalogue</h2>
+      <h2 className="panel-title mb-4">Category catalogue</h2>
       <p className="m-0"><Small>Every category any scan has observed, plus whatever the bestseller crawl has mapped. Grows with use — search it, or crawl more of Amazon's tree.</Small></p>
       <Lbl>Search</Lbl><Field name="q" placeholder="e.g. air fryer, menopause, budgeting" />
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Search</Button>
-      <Button type="button" variant="outline" className="mt-2 w-full" onClick={crawl} disabled={busy}>Crawl 40 pages</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Search</Button>
+      <Button type="button" variant="outline" className="mt-2 h-11 w-full rounded-full border-0 bg-card-3 text-[14px] text-ink hover:bg-card-3/80" onClick={crawl} disabled={busy}>Crawl 40 pages</Button>
       <ErrorLine error={error} />
     </form>
   );
@@ -271,7 +271,7 @@ export function CalcForm({ onShow, jobs }: { onShow: ShowHandler; jobs: Job[] })
   };
   return (
     <form onSubmit={submit}>
-      <h2 className="display mb-4 text-[26px] leading-[1.2]">Royalty calculator</h2>
+      <h2 className="panel-title mb-4">Royalty calculator</h2>
       <Lbl>Monthly royalty goal ($)</Lbl><Field name="goal_month" type="number" defaultValue={1000} min={50} step={50} />
       <Row2>
         <div><Lbl>Format</Lbl>
@@ -291,7 +291,7 @@ export function CalcForm({ onShow, jobs }: { onShow: ShowHandler; jobs: Job[] })
         <option value="">— none —</option>
         {feasible.map((j) => <option key={j.id} value={j.id}>{j.seed} ({j.marketplace.toUpperCase()})</option>)}
       </Select>
-      <Button type="submit" className="mt-6 w-full" disabled={busy}>Calculate</Button>
+      <Button type="submit" className="mt-6 h-11 w-full rounded-full text-[14px]" disabled={busy}>Calculate</Button>
       <ErrorLine error={error} />
     </form>
   );

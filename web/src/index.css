@@ -2,83 +2,58 @@
 @import "tw-animate-css";
 
 /* ============================================================
-   KDP Niche Intelligence — instrument panel on frosted glass.
-   Display: Instrument Serif · UI: IBM Plex Sans · Data: IBM Plex Mono
-   shadcn tokens sit alongside the product's own palette; dark mode
-   follows the OS like the original page did.
+   KDP Niche Intelligence — monochrome admin surface.
+   Black frame, charcoal panels, greyscale charts, Roboto.
+   One theme (dark); the landing page is styled inline.
    ============================================================ */
 :root {
-  color-scheme: light dark;
-  --radius: 0.625rem;
-  --background: #eef1f7;
-  --foreground: #131722;
-  --card: rgba(255, 255, 255, 0.74);
-  --card-foreground: #131722;
-  --popover: #ffffff;
-  --popover-foreground: #131722;
-  --primary: #b07a22;
-  --primary-foreground: #ffffff;
-  --secondary: rgba(255, 255, 255, 0.5);
-  --secondary-foreground: #131722;
-  --muted: rgba(16, 24, 40, 0.06);
-  --muted-foreground: #5c6479;
-  --accent: rgba(16, 24, 40, 0.06);
-  --accent-foreground: #131722;
-  --destructive: #c4453c;
-  --border: rgba(16, 24, 40, 0.1);
-  --input: rgba(16, 24, 40, 0.16);
-  --ring: #b07a22;
+  color-scheme: dark;
+  --radius: 1rem;
 
-  /* product palette */
-  --ink: #131722; --muted-ink: #5c6479; --faint: #8a92a6;
-  --glass: rgba(252, 253, 255, 0.6);
-  --glass-strong: rgba(255, 255, 255, 0.74);
-  --glass-inset: rgba(255, 255, 255, 0.5);
-  --stroke: rgba(16, 24, 40, 0.1);
-  --stroke-strong: rgba(16, 24, 40, 0.16);
-  --shadow: 0 8px 32px rgba(16, 24, 40, 0.1);
-  --gilt: #b07a22; --gilt-ink: #ffffff;
-  --money: #1f8f66; --risk: #c4453c; --info: #3c63c4; --gold: #9a7422;
-  --aur-1: #2aa88a; --aur-2: #4c6fe0; --aur-3: #e0a03c; --aur-4: #d96a7e; --aur-alpha: 0.38;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b0e14;
-    --foreground: #e9edf6;
-    --card: rgba(20, 25, 36, 0.66);
-    --card-foreground: #e9edf6;
-    --popover: #161b26;
-    --popover-foreground: #e9edf6;
-    --primary: #e3a44b;
-    --primary-foreground: #1a1206;
-    --secondary: rgba(255, 255, 255, 0.07);
-    --secondary-foreground: #e9edf6;
-    --muted: rgba(255, 255, 255, 0.07);
-    --muted-foreground: #98a1b6;
-    --accent: rgba(255, 255, 255, 0.07);
-    --accent-foreground: #e9edf6;
-    --destructive: #ee7a70;
-    --border: rgba(255, 255, 255, 0.14);
-    --input: rgba(255, 255, 255, 0.18);
-    --ring: #e3a44b;
+  --bg: #0a0a0a;          /* page frame */
+  --surface: #161616;     /* main panel */
+  --card: #1f1f1f;        /* cards on the panel */
+  --card-2: #292929;      /* nested blocks, icon tiles */
+  --card-3: #343434;      /* hover / pills */
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --text: #f3f3f3;
+  --muted-ink: #a3a3a3;
+  --faint: #6e6e6e;
+  --bar-light: #d6d6d6;
+  --bar-dark: #4c4c4c;
 
-    --ink: #e9edf6; --muted-ink: #98a1b6; --faint: #6d768b;
-    --glass: rgba(14, 18, 27, 0.52);
-    --glass-strong: rgba(20, 25, 36, 0.66);
-    --glass-inset: rgba(255, 255, 255, 0.07);
-    --stroke: rgba(255, 255, 255, 0.14);
-    --stroke-strong: rgba(255, 255, 255, 0.18);
-    --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
-    --gilt: #e3a44b; --gilt-ink: #1a1206;
-    --money: #43c08d; --risk: #ee7a70; --info: #7ba4f0; --gold: #e3a44b;
-    --aur-alpha: 0.34;
-  }
+  /* shadcn tokens mapped onto the palette */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card-foreground: var(--text);
+  --popover: var(--card);
+  --popover-foreground: var(--text);
+  --primary: #ffffff;
+  --primary-foreground: #111111;
+  --secondary: var(--card-3);
+  --secondary-foreground: var(--text);
+  --muted: var(--card-2);
+  --muted-foreground: var(--muted-ink);
+  --accent: var(--card-3);
+  --accent-foreground: var(--text);
+  --destructive: #d9d9d9;
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: #ffffff;
+
+  /* semantic names kept for the views; all greys now */
+  --ink: var(--text);
+  --gilt: #ffffff; --gilt-ink: #111111;
+  --money: #e6e6e6; --risk: #8a8a8a; --info: #bdbdbd; --gold: #cfcfcf;
+  --stroke: var(--line); --stroke-strong: var(--line-strong);
+  --glass: var(--card); --glass-strong: var(--card-2); --glass-inset: var(--card-2);
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
 }
 
 @theme inline {
-  --font-sans: "IBM Plex Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
-  --font-serif: "Instrument Serif", Georgia, serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Roboto", "Inter", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -101,7 +76,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  /* product colours as Tailwind utilities: text-money, bg-risk/15, … */
+
+  --color-surface: var(--surface);
+  --color-card-2: var(--card-2);
+  --color-card-3: var(--card-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-faint: var(--faint);
   --color-gilt: var(--gilt);
@@ -115,86 +95,79 @@
   --color-glass: var(--glass);
   --color-glass-strong: var(--glass-strong);
   --color-glass-inset: var(--glass-inset);
+  --color-bar-light: var(--bar-light);
+  --color-bar-dark: var(--bar-dark);
 }
 
 @layer base {
-  * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-foreground font-sans antialiased; font-size: 15px; line-height: 1.55; }
+  * { @apply border-border outline-ring/40; }
+  body { @apply bg-background text-foreground font-sans antialiased; font-size: 15px; line-height: 1.5; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--card-3); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 }
 
 @layer components {
-  /* the field the glass sits on */
-  .aurora { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-  .aurora span { position: absolute; display: block; border-radius: 50%; filter: blur(90px); opacity: var(--aur-alpha); will-change: transform; }
-  .aurora span:nth-child(1) { width: 42vw; height: 42vw; left: -10vw; top: -16vw; background: var(--aur-1); animation: drift1 40s ease-in-out infinite alternate; }
-  .aurora span:nth-child(2) { width: 38vw; height: 38vw; right: -8vw; top: -14vw; background: var(--aur-2); animation: drift2 48s ease-in-out infinite alternate; }
-  .aurora span:nth-child(3) { width: 36vw; height: 36vw; left: 18vw; bottom: -20vw; background: var(--aur-3); animation: drift3 44s ease-in-out infinite alternate; }
-  .aurora span:nth-child(4) { width: 32vw; height: 32vw; right: -6vw; bottom: -16vw; background: var(--aur-4); animation: drift1 52s ease-in-out infinite alternate-reverse; }
+  /* cards */
+  .panel { @apply rounded-[22px] bg-card p-6; }
+  .panel-title { @apply flex items-center justify-between gap-3 text-[20px] font-medium text-ink; }
+  .kebab { @apply text-faint text-[20px] leading-none tracking-[2px]; }
+  .tile { @apply flex h-9 w-9 items-center justify-center rounded-[10px] bg-card-2 text-ink; }
+  .iconbtn { @apply flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground; }
+  .circ { @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-card-3 text-ink; }
 
-  .glass {
-    background: var(--glass);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid var(--stroke);
-    border-radius: 16px;
-    box-shadow: var(--shadow), inset 0 1px 0 var(--glass-inset);
-  }
-  .glass-strong { background: var(--glass-strong); border: 1px solid var(--stroke); border-radius: 10px; }
+  /* typography */
+  .display { font-weight: 500; letter-spacing: -0.01em; }
+  .stat { @apply text-[34px] font-medium leading-none tracking-[-0.01em] tabular-nums; }
+  .num { @apply text-right tabular-nums whitespace-nowrap; }
+  .small { @apply text-[12.5px] text-muted-foreground; }
 
-  /* section rule: uppercase label with a hairline running to the edge */
-  .rule { @apply flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.13em] text-faint mt-8 mb-3; }
-  .rule::after { content: ""; flex: 1; height: 1px; background: var(--stroke); }
+  /* section headings inside a card */
+  .rule { @apply text-[15px] font-medium text-ink mt-6 mb-3; }
 
-  .display { font-family: var(--font-serif); font-weight: 400; letter-spacing: 0.01em; }
-  .num { @apply text-right font-mono tabular-nums whitespace-nowrap; }
+  /* controls */
+  .field { @apply w-full h-11 px-4 rounded-[14px] border border-line bg-card-2 text-[14px] text-ink transition-[border-color,box-shadow] focus:outline-none focus:border-line-strong focus:ring-[3px] focus:ring-white/10 placeholder:text-faint; }
+  textarea.field { @apply h-auto py-3 font-mono text-[13px] leading-relaxed resize-y; }
+  select.field { appearance: none; padding-right: 36px; background-image: linear-gradient(45deg, transparent 50%, var(--muted-ink) 50%), linear-gradient(135deg, var(--muted-ink) 50%, transparent 50%); background-position: calc(100% - 19px) 19px, calc(100% - 14px) 19px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+  .lbl { @apply block text-[12.5px] font-medium text-muted-foreground mt-4 mb-2; }
 
-  .field { @apply w-full h-[38px] px-3 rounded-[10px] border border-stroke-strong bg-glass-inset text-[13.5px] text-ink transition-[border-color,box-shadow] focus:outline-none focus:border-gilt focus:ring-[3px] focus:ring-gilt/20 placeholder:text-faint; }
-  textarea.field { @apply h-auto py-2 font-mono text-[13px] leading-relaxed resize-y; }
-  select.field { appearance: none; padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--muted-ink) 50%), linear-gradient(135deg, var(--muted-ink) 50%, transparent 50%); background-position: calc(100% - 17px) 16px, calc(100% - 12px) 16px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
-  .lbl { @apply block text-[12px] font-semibold text-muted-foreground mt-4 mb-2 tracking-[0.02em]; }
+  /* chips and badges */
+  .chip { @apply inline-flex items-center text-[10px] font-semibold uppercase tracking-[0.06em] rounded-full px-2 py-[2px] bg-card-3 text-muted-foreground; }
+  .tagchip { @apply inline-block rounded-full bg-card-2 px-3 py-[5px] mr-1 mb-2 text-[12.5px] text-ink no-underline; }
+  .tagchip.offpage { @apply border border-dashed border-line-strong bg-transparent; }
+  .warnbox { @apply rounded-[14px] bg-card-2 px-4 py-3 my-3 text-[13px] leading-normal text-ink border-l-[3px] border-l-white; }
+  .nodata { @apply rounded-[14px] bg-card-2 p-4 text-[13px] leading-relaxed text-muted-foreground; }
+  .note { @apply rounded-[14px] bg-card-2 px-4 py-3 mb-2 text-[12.5px] leading-normal border-l-[3px] border-l-bar-dark; }
 
-  .chip { @apply inline-flex items-center text-[9.5px] font-bold uppercase tracking-[0.07em] rounded-full px-2 py-[2px] border border-transparent; }
-  .tagchip { @apply inline-block bg-glass-strong border border-stroke rounded-full px-[11px] py-1 mr-1 mb-2 text-[12px] text-ink no-underline; }
-  .tagchip.offpage { border-style: dashed; }
-  .warnbox { @apply rounded-[10px] px-4 py-3 my-3 text-[13px] leading-normal text-ink border-l-[3px]; background: color-mix(in srgb, var(--risk) 10%, transparent); border-color: color-mix(in srgb, var(--risk) 28%, transparent); border-left-color: var(--risk); }
-  .nodata { @apply rounded-[10px] p-4 text-[13px] leading-relaxed text-muted-foreground border border-dashed border-stroke-strong bg-glass-strong; }
-  .note { @apply rounded-[10px] px-4 py-3 mb-2 text-[12.5px] leading-normal border border-stroke border-l-[3px] bg-glass-strong; }
-
+  /* tables */
   .datatable { @apply w-full border-collapse text-[13px] min-w-[640px]; }
-  .datatable th { @apply text-[10px] font-semibold uppercase tracking-[0.09em] text-left text-faint p-3 whitespace-nowrap border-b border-stroke-strong sticky top-0 bg-glass-strong backdrop-blur-md; }
-  .datatable td { @apply p-3 border-t border-stroke align-top; }
+  .datatable th { @apply text-[11px] font-medium tracking-[0.02em] text-left text-faint px-3 py-3 whitespace-nowrap border-b border-line; }
+  .datatable td { @apply px-3 py-3 border-t border-line align-top; }
   .datatable tr:first-child td { border-top: none; }
-  .datatable tr:hover td { background: var(--glass); }
-  .datatable td a { @apply text-ink no-underline border-b border-stroke-strong hover:text-gilt hover:border-gilt; }
+  .datatable tr:hover td { background: var(--card-2); }
+  .datatable td a { @apply text-ink no-underline border-b border-line-strong hover:border-white; }
   .kv { @apply w-full text-[13px]; }
-  .kv th { @apply w-[150px] text-left align-top py-2 pr-3 text-[10px] font-semibold uppercase tracking-[0.09em] text-faint; }
-  .kv td { @apply py-2 border-t border-stroke; }
+  .kv th { @apply w-[150px] text-left align-top py-2 pr-3 text-[11px] font-medium text-faint; }
+  .kv td { @apply py-2 border-t border-line; }
 
-  .q { @apply inline-block text-[10px] font-bold tracking-[0.06em] rounded-full px-[9px] py-[3px] whitespace-nowrap; }
-  .q-GO, .q-GOLDMINE, .q-surging, .q-steady, .q-ok { background: color-mix(in srgb, var(--money) 18%, transparent); color: var(--money); }
-  .q-ANGLE, .q-slow, .q-low { background: color-mix(in srgb, var(--gold) 20%, transparent); color: var(--gold); }
-  .q-VERIFY, .q-not_configured, .q-medium { background: color-mix(in srgb, var(--info) 18%, transparent); color: var(--info); }
-  .q-AVOID, .q-CROWDED, .q-stale, .q-unavailable { background: color-mix(in srgb, var(--risk) 18%, transparent); color: var(--risk); }
-  .q-excluded, .q-none { background: var(--stroke); color: var(--faint); }
-
-  .st-running, .st-queued { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
-  .st-done { background: color-mix(in srgb, var(--money) 16%, transparent); color: var(--money); }
-  .st-partial, .st-failed { background: color-mix(in srgb, var(--risk) 16%, transparent); color: var(--risk); }
-
-  .d-very-high { background: color-mix(in srgb, var(--money) 22%, transparent); color: var(--money); }
-  .d-high { background: color-mix(in srgb, var(--money) 14%, transparent); color: var(--money); }
-  .d-moderate { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); }
-  .d-niche { background: color-mix(in srgb, var(--info) 16%, transparent); color: var(--info); }
-  .d-thin { background: var(--stroke); color: var(--faint); }
+  /* verdict / status pills — one hue, four brightnesses */
+  .q { @apply inline-block text-[10.5px] font-semibold tracking-[0.04em] rounded-full px-[10px] py-[3px] whitespace-nowrap; }
+  .q-GO, .q-GOLDMINE, .q-surging, .q-steady, .q-ok, .q-done, .q-medium { background: #ffffff; color: #111111; }
+  .q-ANGLE, .q-slow, .q-low, .q-partial { background: #c9c9c9; color: #111111; }
+  .q-VERIFY, .q-not_configured, .q-running, .q-queued { background: var(--card-3); color: var(--text); }
+  .q-AVOID, .q-CROWDED, .q-stale, .q-unavailable, .q-failed, .q-excluded, .q-none { background: var(--card-2); color: var(--muted-ink); border: 1px solid var(--line-strong); }
+  .st-running, .st-queued { background: var(--card-3); color: var(--text); }
+  .st-done { background: #ffffff; color: #111111; }
+  .st-partial, .st-failed { background: var(--card-2); color: var(--muted-ink); border: 1px solid var(--line-strong); }
+  .d-very-high, .d-high { background: #ffffff; color: #111111; }
+  .d-moderate { background: #c9c9c9; color: #111111; }
+  .d-niche { background: var(--card-3); color: var(--text); }
+  .d-thin { background: var(--card-2); color: var(--muted-ink); }
 
   /* grain for the landing hero */
   .bg-noise { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"); }
   .bg-grainy { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"); }
 }
 
-@keyframes drift1 { to { transform: translate3d(6vw, 4vh, 0) scale(1.12); } }
-@keyframes drift2 { to { transform: translate3d(-5vw, 6vh, 0) scale(1.08); } }
-@keyframes drift3 { to { transform: translate3d(4vw, -5vh, 0) scale(1.15); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
