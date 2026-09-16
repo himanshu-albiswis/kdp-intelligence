@@ -1,0 +1,19 @@
+# never ship secrets or local state into the image
+.env
+.env.*
+data/
+*.db
+# local toolchains and caches
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+web/node_modules/
+web/dist/
+.git/
+.remember/
+.claude/
+# not needed at runtime
+tests/
+docs/
+sample_output/

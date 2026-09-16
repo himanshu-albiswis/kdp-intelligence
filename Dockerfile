@@ -22,4 +22,5 @@ RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
 EXPOSE 8000
-CMD ["uvicorn", "app:app", "--app-dir", "server", "--host", "0.0.0.0", "--port", "8000"]
+# Railway and similar hosts inject PORT; fall back to 8000 locally
+CMD uvicorn app:app --app-dir server --host 0.0.0.0 --port ${PORT:-8000}
