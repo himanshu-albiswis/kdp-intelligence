@@ -398,3 +398,10 @@ def money_guard(rows: list[dict], currency_ok: bool) -> list[dict]:
     if currency_ok:
         return rows
     return [{**row, "est_monthly_royalty": None, "money_suppressed": True} for row in rows]
+
+
+def dev_cache_enabled() -> bool:
+    """KDP_DEV_CACHE turns on Scrapling's response replay. Only explicit
+    truthy values count: "0"/"false" on a production host must mean off."""
+    import os
+    return os.environ.get("KDP_DEV_CACHE", "").strip().lower() in ("1", "true", "yes", "on")

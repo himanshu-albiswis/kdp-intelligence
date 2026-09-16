@@ -87,6 +87,12 @@ with _db() as conn:
         conn.execute("ALTER TABLE jobs ADD COLUMN kind TEXT DEFAULT 'research'")
     except sqlite3.OperationalError:
         pass  # column already exists
+    # Jobs left queued/running by a restart (a redeploy, a crash) would
+    # otherwise spin forever in the UI; say what happened instead.
+    conn.execute(
+        "UPDATE jobs SET status='failed', pct=100, stage='done', "
+        "message='The server restarted while this job was running (a redeploy or crash). Run it again.' "
+        "WHERE status IN ('queued', 'running')")
 
 
 def _update(job_id: str, **fields: Any) -> None:
@@ -124,8 +130,7 @@ def _worker(job_id: str, params: dict[str, Any], kind: str = "research") -> None
             progress("crawl", 10, f"Walking the bestseller tree, budget {params.get('max_pages')} pages")
             # Plain headers got the 503 decoy on the bestseller tree; the
             # measured-working pairing for amazon.com is edge + stealth headers.
-            from scrapling.fetchers import Fetcher as _Fetcher
-            fetch = lambda url: _Fetcher.get(url, impersonate="edge", stealthy_headers=True, timeout=30)
+            fetch = lambda url: transport.resilient_get(url, timeout=30)
             parsed = crawl_categories(CATEGORY_STORE, fetch=fetch, root=params.get("root", "154606011"),
                                       max_pages=int(params.get("max_pages", 40)))
             bundle = {"pages_parsed": parsed, "catalogue_size": CATEGORY_STORE.count(),

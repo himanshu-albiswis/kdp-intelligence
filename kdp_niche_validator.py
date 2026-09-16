@@ -40,6 +40,7 @@ Notes:
 import argparse
 import logging
 import os
+import kdp_estimates
 import re
 import sys
 
@@ -196,7 +197,7 @@ class KDPNicheSpider(Spider):
     autothrottle_enabled = True
     # Replay cached responses while iterating on parse logic. Off unless asked:
     # a stale cache silently scoring old data would be worse than a slow run.
-    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
+    development_mode = kdp_estimates.dev_cache_enabled()
 
     def __init__(
         self,

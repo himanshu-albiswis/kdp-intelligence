@@ -85,3 +85,34 @@ def block_advice(impersonate: str, stealthy: bool) -> str:
     steps.append("only then add a residential proxy — datacenter IPs are blocked outright")
     ordered = "; ".join(f"{i}) {step}" for i, step in enumerate(steps, 1))
     return f"Amazon returned a decoy page instead of results. Try, in order: {ordered}."
+
+
+def resilient_get(url: str, timeout: int = 30, fetcher: Any = None, pause: float = 1.5) -> Any:
+    """Fetch one Amazon page, rotating fingerprints on a decoy or tiny page.
+
+    Measured on Railway: a plain /dp/ GET with edge+stealth can come back as
+    a 503 decoy or a 2 KB shell on the first try while the same page reads
+    fine a moment later. Try edge+stealth, then chrome with plain headers,
+    then firefox+stealth; return the first real page, else the last response.
+    """
+    import time
+    if fetcher is None:  # pragma: no cover - live import
+        from scrapling.fetchers import Fetcher
+        fetcher = Fetcher.get
+    attempts = [("edge", True), ("chrome", False), ("firefox", True)]
+    last = None
+    for i, (impersonate, stealthy) in enumerate(attempts):
+        if i:
+            time.sleep(pause)
+        try:
+            response = fetcher(url, impersonate=impersonate, stealthy_headers=stealthy, timeout=timeout)
+        except Exception as exc:  # noqa: BLE001 - try the next fingerprint
+            last = exc
+            continue
+        body = getattr(response, "body", b"") or b""
+        if getattr(response, "status", 0) == 200 and (len(body) >= 5_000 or b"productTitle" in (body if isinstance(body, bytes) else body.encode())):
+            return response
+        last = response
+    if isinstance(last, Exception):
+        raise last
+    return last

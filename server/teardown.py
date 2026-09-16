@@ -26,6 +26,10 @@ import math
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
+try:  # pragma: no cover - import-shape shim
+    from . import transport as transport_mod
+except ImportError:  # pragma: no cover
+    import transport as transport_mod
 from typing import Any, Callable, Optional
 
 AMAZON_HOST = "https://www.amazon.com"
@@ -371,7 +375,9 @@ def run_teardown(params: dict[str, Any], progress, fetch: Optional[Callable] = N
         return {"rows": [], "generated_at": date.today().isoformat(),
                 "warnings": ["No ASIN or Amazon link found in what you pasted."]}
 
-    fetch = fetch or registry.default_fetch("edge")
+    # Amazon product pages from a datacenter IP: one fingerprint can get a
+    # 503 decoy while the next reads fine, so rotate rather than give up.
+    fetch = fetch or (lambda url: transport_mod.resilient_get(url, timeout=30))
     if llm == "auto":
         llm = _default_llm()
 

@@ -264,3 +264,19 @@ class TestMoneyGuard:
         out = est.money_guard(self.rows, currency_ok=True)
         assert out[0]["est_monthly_royalty"] == 2636.0
         assert "money_suppressed" not in out[0]
+
+
+class TestDevCacheFlag:
+    """KDP_DEV_CACHE=0 on Railway still enabled replay: bool("0") is True."""
+
+    def test_zero_and_false_mean_off(self, monkeypatch):
+        import kdp_estimates
+        for v in ("0", "false", "no", "", "off"):
+            monkeypatch.setenv("KDP_DEV_CACHE", v)
+            assert kdp_estimates.dev_cache_enabled() is False
+
+    def test_one_and_true_mean_on(self, monkeypatch):
+        import kdp_estimates
+        for v in ("1", "true", "yes", "on"):
+            monkeypatch.setenv("KDP_DEV_CACHE", v)
+            assert kdp_estimates.dev_cache_enabled() is True

@@ -27,6 +27,7 @@ not accounting. Same ToS / proxy caveats as the sibling scripts.
 """
 
 import argparse
+import kdp_estimates
 import base64
 import bisect
 import html as html_mod
@@ -137,7 +138,7 @@ class DeepDiveSpider(Spider):
     autothrottle_enabled = True
     # Replay cached responses while iterating on parse logic. Off unless asked:
     # a stale cache silently scoring old data would be worse than a slow run.
-    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
+    development_mode = kdp_estimates.dev_cache_enabled()
 
     def __init__(self, books: list[Book], session_kwargs: dict[str, Any], **kwargs):
         self.books = books
@@ -261,7 +262,7 @@ class ComplaintSpider(Spider):
     max_blocked_retries = 2
     logging_level = logging.INFO
     autothrottle_enabled = True
-    development_mode = bool(os.environ.get("KDP_DEV_CACHE"))
+    development_mode = kdp_estimates.dev_cache_enabled()
 
     def __init__(self, books: list[Book], domain: str, session_kwargs: dict[str, Any], **kwargs):
         self.books = books
