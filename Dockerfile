@@ -17,9 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-server.txt
 COPY . .
 COPY --from=web /web/dist ./web/dist
 
-# Persisted job database lives here; mount a volume in production
+# Persisted job database lives here; mount a volume at /app/data in
+# production (Railway rejects a Dockerfile VOLUME, so it is declared there)
 RUN mkdir -p /app/data
-VOLUME ["/app/data"]
 
 EXPOSE 8000
 # Railway and similar hosts inject PORT; fall back to 8000 locally
