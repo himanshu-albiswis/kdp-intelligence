@@ -202,8 +202,12 @@ def _fetch_one(fetch: Callable, asin: str) -> dict[str, Any]:
     if not isinstance(body, str):
         body = body.decode("utf-8", "ignore")
     if status != 200 or len(body) < 5_000 and "productTitle" not in body:
+        # Say what Amazon actually sent: a captcha, a "dog" error page, a
+        # redirect shell — the title is the cheapest honest diagnosis.
+        title = re.search(r"<title>(.*?)</title>", body, re.S | re.I)
+        what = re.sub(r"\s+", " ", title.group(1)).strip()[:80] if title else "not a product page"
         return {**_blank(asin),
-                "error": f"HTTP {status}, {len(body)} bytes — blocked or not a product page"}
+                "error": f"HTTP {status}, {len(body):,} bytes — {what}"}
     row = parse_book(body, page_text(body), asin)
     # Same product page, two more reads at no extra request.
     row["quality"] = product_signals.listing_quality(body)
