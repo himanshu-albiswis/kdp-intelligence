@@ -154,3 +154,4 @@ npm run build    # writes web/dist; the server picks it up on next start
 shadcn components are added with `npx shadcn@latest add <name>` and land in
 `web/src/components/ui`, imported as `@/components/ui/<name>`. The original
 single-file page stays available at `/legacy`.
+# kdp-intelligence
